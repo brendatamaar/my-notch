@@ -1,0 +1,47 @@
+<UserControl x:Class="MyNotch.Controls.CalendarControl" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid ColumnSpacing="18">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="212" /><ColumnDefinition /></Grid.ColumnDefinitions>
+    <StackPanel Spacing="4">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <TextBlock x:Name="SelectedDay" FontSize="32" FontWeight="SemiBold" Foreground="White" />
+        <StackPanel VerticalAlignment="Center" Spacing="1">
+          <TextBlock x:Name="SelectedWeekday" FontSize="11" Foreground="#69ADFF" />
+          <TextBlock x:Name="SelectedMonth" FontSize="11" Foreground="White" />
+        </StackPanel>
+      </StackPanel>
+      <TextBlock x:Name="SelectedDetail" FontSize="9" Foreground="{StaticResource NotchText3Brush}" />
+      <Grid x:Name="MeetingRow" Visibility="Collapsed" ColumnSpacing="6" Margin="0,3,0,0" Padding="8,4" CornerRadius="10" Background="{StaticResource NotchSurfaceBrush}">
+        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock x:Name="MeetingTitle" FontSize="11" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" MaxLines="1" />
+          <TextBlock x:Name="MeetingWhen" FontSize="9" Foreground="{StaticResource NotchText2Brush}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+        </StackPanel>
+        <Button x:Name="MeetingJoin" Grid.Column="1" Content="Join" Click="MeetingJoin_Click" Style="{StaticResource NotchAccentButtonStyle}" Padding="10,3" FontSize="10" VerticalAlignment="Center" AutomationProperties.Name="Join meeting" />
+      </Grid>
+      <Grid Margin="0,4,0,0"><TextBlock Text="TO DO" FontSize="10" CharacterSpacing="80" Foreground="White" /><TextBlock x:Name="TodoCount" HorizontalAlignment="Right" FontSize="10" Foreground="{StaticResource NotchText3Brush}" /></Grid>
+      <Grid ColumnSpacing="4">
+        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <TextBox x:Name="TaskInput" PlaceholderText="Add a task..." MaxLength="200" FontSize="11" Height="28" MinHeight="28" Padding="7,3" CornerRadius="8" AutomationProperties.Name="Task for selected date" />
+        <Button Grid.Column="1" Content="+" Click="AddTask_Click" Style="{StaticResource NotchButtonStyle}" Padding="7,0" Height="28" MinHeight="28" FontSize="17" AutomationProperties.Name="Add task" />
+      </Grid>
+      <StackPanel x:Name="TasksHost" Spacing="3" />
+      <Grid x:Name="TaskPager" Visibility="Collapsed" ColumnSpacing="4">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <Button x:Name="PreviousTasks" Content="&#x2039;" Click="PreviousTasks_Click" Style="{StaticResource NotchButtonStyle}" Padding="7,0" MinHeight="20" Height="20" FontSize="14" AutomationProperties.Name="Previous tasks" />
+        <TextBlock x:Name="TaskPageLabel" Grid.Column="1" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource NotchText3Brush}" />
+        <Button x:Name="NextTasks" Grid.Column="2" Content="&#x203A;" Click="NextTasks_Click" Style="{StaticResource NotchButtonStyle}" Padding="7,0" MinHeight="20" Height="20" FontSize="14" AutomationProperties.Name="Next tasks" />
+      </Grid>
+      <TextBlock x:Name="TaskStatus" Visibility="Collapsed" FontSize="9" Foreground="#FFBF70" TextTrimming="CharacterEllipsis" MaxLines="1" />
+    </StackPanel>
+    <StackPanel Grid.Column="1" Spacing="4">
+      <Grid ColumnSpacing="3">
+        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <TextBlock x:Name="MonthHeading" FontSize="13" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center" />
+        <Button x:Name="PreviousMonth" Grid.Column="1" Content="&#x2039;" Click="Previous_Click" Style="{StaticResource NotchButtonStyle}" Padding="7,1" FontSize="16" AutomationProperties.Name="Previous month" />
+        <Button Grid.Column="2" Content="Today" Click="Today_Click" Style="{StaticResource NotchButtonStyle}" Padding="8,3" FontSize="10" />
+        <Button x:Name="NextMonth" Grid.Column="3" Content="&#x203A;" Click="Next_Click" Style="{StaticResource NotchButtonStyle}" Padding="7,1" FontSize="16" AutomationProperties.Name="Next month" />
+      </Grid>
+      <Grid x:Name="DaysGrid" RowSpacing="2" ColumnSpacing="3" />
+    </StackPanel>
+  </Grid>
+</UserControl>

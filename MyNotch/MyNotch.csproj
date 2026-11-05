@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>MyNotch</RootNamespace>
+    <AssemblyName>MyNotch</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Unpackaged deployment (AGENTS.md / PLAN.md Phase 1) -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <!-- Unpackaged WinUI 3 needs MyNotch.pri (resources.pri) to resolve .xbf XAML; without it the app
+         crashes at startup with 0xC000027B in Microsoft.UI.Xaml.dll. Requires VS Build Tools Appx tasks (see build.ps1). -->
+    <AppxGeneratePriEnabled>true</AppxGeneratePriEnabled>
+    <AppxGeneratePrisForPortableLibrariesEnabled>true</AppxGeneratePrisForPortableLibrariesEnabled>
+
+    <!-- Native AOT (AGENTS.md: no heavy reflection / dynamic codegen) -->
+    <PublishAot>true</PublishAot>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IlcGenerateCompleteTypeMetadata>false</IlcGenerateCompleteTypeMetadata>
+    <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Assets')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="commands.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Setup-NotificationAccess.ps1" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- `dotnet publish` doesn't pick up the generated MyNotch.pri for unpackaged apps; without it the published
+       app dies at startup (0xC000027B / heap corruption) because XAML (.xbf) can't be resolved. -->
+  <Target Name="IncludePriInPublish" BeforeTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(TargetDir)$(AssemblyName).pri"
+                             RelativePath="$(AssemblyName).pri"
+                             CopyToPublishDirectory="PreserveNewest"
+                             Condition="Exists('$(TargetDir)$(AssemblyName).pri')" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows10.0.19041.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>12</LangVersion></PropertyGroup>
+  <ItemGroup><Compile Include="../../MyNotch/Models/ArtworkLookup.cs" Link="ArtworkLookup.cs" /><Compile Include="../../MyNotch/Models/MediaMetadata.cs" Link="MediaMetadata.cs" />
+    <Compile Include="../../MyNotch/Models/MediaTrackInfo.cs" Link="MediaTrackInfo.cs" />
+    <Compile Include="../../MyNotch/Models/LyricsModels.cs" Link="LyricsModels.cs" />
+    <Compile Include="../../MyNotch/Models/LyricsLookup.cs" Link="LyricsLookup.cs" />
+    <Compile Include="../../MyNotch/Services/MediaControlService.cs" Link="MediaControlService.cs" />
+    <Compile Include="../../MyNotch/Services/LyricsMatching.cs" Link="LyricsMatching.cs" />
+    <Compile Include="../../MyNotch/Services/LyricsService.cs" Link="LyricsService.cs" />
+    <Compile Include="../../MyNotch/Services/LrcParser.cs" Link="LrcParser.cs" />
+  </ItemGroup>
+</Project>

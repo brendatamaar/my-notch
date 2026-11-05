@@ -1,0 +1,13 @@
+# Local project dev servers
+
+Developer shows LOCAL DEV SERVERS rather than a machine-wide service inventory. TCPv4/v6 listeners must bind to loopback or wildcard (0.0.0.0 / ::, also reachable through localhost). Explicit LAN-only addresses are excluded. Rows show project name, framework, process name and PID; the full project path is in the tooltip. Dual-stack endpoints deduplicate by port/PID.
+
+Identification requires an interactive-session process, accessible process metadata, a source-project manifest and a recognizable server runtime/launch. Project roots come from script/--project paths or the process working directory; compiled web binaries can resolve their owning project. Markers include package.json, Python manifests/manage.py, ASP.NET Web SDK csproj/fsproj, go.mod, Cargo.toml, Java build files, composer.json and Gemfile. No common-port whitelist is used. Installed package directories, Windows services, IDE/language servers, MCP/tool helpers, non-web .NET desktop apps and explicit Node/Python/Java debugger ports are filtered. A global Vite/Angular CLI can still belong to a project when its working directory supplies project evidence.
+
+Only the process image, command line and current-directory descriptor are inspected. Environment variables, request bodies and credentials are not read; command lines are not logged or displayed. Inaccessible/unrecognized processes are hidden. This is a deliberate project-dev-server heuristic, not an application-protocol probe: WSL/Docker proxy ports cannot currently be attributed to their source project and are not shown as dev servers. Projects under installed-tool locations such as AppData are excluded.
+
+Stop rechecks the live listener and project identity, then compares process creation time on the same Windows handle used to terminate it. A stale PID cannot stop a replacement process. Scans remain on demand; no background polling was added.
+
+Verification: pure predicate tests for local/wildcard binding, quoting/spaced paths, supported runtimes, project proof, system/IDE/MCP exclusion and debugger ports. `--dev-port-probe` creates its own temporary source fixture under tests, starts isolated Python HTTP servers on ephemeral IPv4/wildcard/IPv6 ports, checks discovery/port decoding, rejects stale process identity, and stops only those test processes. Fixtures are removed afterward.
+
+Sources: Microsoft NtQueryInformationProcess/ReadProcessMemory documentation and System Informer's phnt process-information definitions. The current-directory layout uses Windows process parameters; failure to inspect it leaves the process unlisted rather than guessing from its port number.

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><LangVersion>12</LangVersion><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+  <ItemGroup><Compile Include="../../MyNotch/Models/NotchNotification.cs" Link="NotchNotification.cs" /><Compile Include="../../MyNotch/Models/WellnessReminder.cs" Link="WellnessReminder.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../MyNotch/Models/DevServerFilter.cs" Link="DevServerFilter.cs" /><Compile Include="../../MyNotch/Models/ListeningPortInfo.cs" Link="ListeningPortInfo.cs" /><Compile Include="../../MyNotch/Interop/NativeMethods.cs" Link="NativeMethods.cs" /><Compile Include="../../MyNotch/Interop/DevProcessInspector.cs" Link="DevProcessInspector.cs" /><Compile Include="../../MyNotch/Services/DevServerResolver.cs" Link="DevServerResolver.cs" /><Compile Include="../../MyNotch/Services/PortMonitorService.cs" Link="PortMonitorService.cs" /><Compile Include="../../MyNotch/Services/UsageResetJournal.cs" Link="UsageResetJournal.cs" /><Compile Include="../../MyNotch/Interop/GpuUsageCounter.cs" Link="GpuUsageCounter.cs" /><Compile Include="../../MyNotch/Services/SystemUsageReader.cs" Link="SystemUsageReader.cs" /><Compile Include="../../MyNotch/Models/CalendarTodo.cs" Link="CalendarTodo.cs" /><Compile Include="../../MyNotch/Models/CalendarTodoJsonContext.cs" Link="CalendarTodoJsonContext.cs" /><Compile Include="../../MyNotch/Services/CalendarTodoService.cs" Link="CalendarTodoService.cs" /><Compile Include="../../MyNotch/Interop/NativeMethods.SystemUsage.cs" Link="NativeMethods.SystemUsage.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../MyNotch/Models/CalendarMonth.cs" Link="CalendarMonth.cs" /><Compile Include="../../MyNotch/Models/SystemUsage.cs" Link="SystemUsage.cs" /><Compile Include="../../MyNotch/Models/AgentUsage.cs" Link="AgentUsage.cs" /><Compile Include="../../MyNotch/Services/AgentUsageParser.cs" Link="AgentUsageParser.cs" /><Compile Include="../../MyNotch/Services/AgentUsageReader.cs" Link="AgentUsageReader.cs" /><Compile Include="../../MyNotch/Services/AgentUsageService.cs" Link="AgentUsageService.cs" /><Compile Include="../../MyNotch/Models/PrayerLocation.cs" Link="PrayerLocation.cs" /><Compile Include="../../MyNotch/Models/PrayerTimes.cs" Link="PrayerTimes.cs" /><Compile Include="../../MyNotch/Models/PrayerTimesJsonContext.cs" Link="PrayerTimesJsonContext.cs" /><Compile Include="../../MyNotch/Models/FocusTimer.cs" Link="FocusTimer.cs" /><Compile Include="../../MyNotch/Models/MusicGlance.cs" Link="MusicGlance.cs" /><Compile Include="../../MyNotch/Models/ArtworkLookup.cs" Link="ArtworkLookup.cs" /><Compile Include="../../MyNotch/Models/MediaMetadata.cs" Link="MediaMetadata.cs" />
+    <Compile Include="../../MyNotch/Models/LyricsModels.cs" Link="LyricsModels.cs" />
+    <Compile Include="../../MyNotch/Models/LyricsLookup.cs" Link="LyricsLookup.cs" />
+    <Compile Include="../../MyNotch/Services/LyricsMatching.cs" Link="LyricsMatching.cs" />
+    <Compile Include="../../MyNotch/Services/LyricsService.cs" Link="LyricsService.cs" />
+    <Compile Include="../../MyNotch/Services/LrcParser.cs" Link="LrcParser.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../MyNotch/Models/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../../MyNotch/Services/SettingsService.cs" Link="SettingsService.cs" />
+    <Compile Include="../../MyNotch/Services/StartupRegistration.cs" Link="StartupRegistration.cs" />
+    <Compile Include="../../MyNotch/Models/ClipboardDetection.cs" Link="ClipboardDetection.cs" />
+    <Compile Include="../../MyNotch/Models/CronSchedule.cs" Link="CronSchedule.cs" />
+    <Compile Include="../../MyNotch/Services/ClipboardAnalyzer.cs" Link="ClipboardAnalyzer.cs" />
+    <Compile Include="../../MyNotch/Models/IcsCalendar.cs" Link="IcsCalendar.cs" />
+    <Compile Include="../../MyNotch/Models/AgentPayload.cs" Link="AgentPayload.cs" />
+    <Compile Include="../../MyNotch/Models/AgentSessions.cs" Link="AgentSessions.cs" />
+    <Compile Include="../../MyNotch/Models/ClaudeHooks.cs" Link="ClaudeHooks.cs" />
+    <Compile Include="../../MyNotch/Models/WebhookJsonContext.cs" Link="WebhookJsonContext.cs" />
+    <Compile Include="../../MyNotch/Services/WebhookServerService.cs" Link="WebhookServerService.cs" />
+    <Compile Include="../../MyNotch/Services/ClaudeHookSetup.cs" Link="ClaudeHookSetup.cs" />
+    <Compile Include="../../MyNotch/Interop/ClientProcessResolver.cs" Link="ClientProcessResolver.cs" />
+    <Compile Include="../../MyNotch/Services/CliRunner.cs" Link="CliRunner.cs" />
+    <Compile Include="../../MyNotch/Services/DockerService.cs" Link="DockerService.cs" />
+    <Compile Include="../../MyNotch/Services/GitStatusService.cs" Link="GitStatusService.cs" />
+  </ItemGroup>
+</Project>

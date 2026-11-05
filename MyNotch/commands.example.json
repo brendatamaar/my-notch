@@ -1,0 +1,5 @@
+[
+  { "name": "Terminal (home)", "kind": "terminal", "target": "%USERPROFILE%", "keywords": "wt console shell" },
+  { "name": "SSH staging", "kind": "ssh", "target": "user@staging.example.com", "keywords": "server remote" },
+  { "name": "Dev setup script", "kind": "script", "target": "%USERPROFILE%\\scripts\\setup.ps1", "keywords": "provision powershell" }
+]

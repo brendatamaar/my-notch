@@ -1,0 +1,628 @@
+<Window x:Class="MyNotch.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:MyNotch.Controls" xmlns:models="using:MyNotch.Models" xmlns:viewmodels="using:MyNotch.ViewModels" Title="MyNotch">
+  <!-- The black body meets the screen at y=0; concave shoulders follow its animated width.
+         Only the bottom corners are rounded. Transparent side margins leave room for the shadow. -->
+  <Grid x:Name="RootGrid" Background="Transparent" RequestedTheme="Dark" PointerEntered="Root_PointerMoved" PointerMoved="Root_PointerMoved" PointerExited="Root_PointerExited" RightTapped="Root_RightTapped">
+    <Grid x:Name="ShadowHost" Margin="0" IsHitTestVisible="False" />
+    <Path x:Name="LeftShoulder" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Data="M 0,0 L 10,0 L 10,10 A 10,10 0 0 0 0,0 Z" Fill="Black" IsHitTestVisible="False" />
+    <Path x:Name="RightShoulder" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Data="M 0,0 L 10,0 A 10,10 0 0 0 0,10 Z" Fill="Black" IsHitTestVisible="False" />
+    <Grid x:Name="Pill" Margin="0" Background="Transparent">
+      <!-- Closed: one glance at a time, laid out at the capsule's size -->
+      <Grid x:Name="GlanceHost" Width="150" Height="30" Padding="14,0" ColumnSpacing="9" HorizontalAlignment="Center" VerticalAlignment="Top">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Grid VerticalAlignment="Center">
+          <!-- Notice uses its notification's glyph; meeting (calendar) and clipboard (paste) reuse this icon slot. -->
+          <FontIcon x:Name="GlanceNoticeIcon" Glyph="&#xE7F4;" FontSize="19" Foreground="{StaticResource NotchAccentBrush}" Visibility="Collapsed" />
+          <!-- Prayer: the same crescent as the Prayer tab. -->
+          <Viewbox x:Name="GlancePrayerIcon" Width="16" Height="16" Visibility="Collapsed"><Canvas Width="18" Height="18"><Path Data="M 12,1 A 8,8 0 1 0 17,12 A 7,7 0 0 1 12,1 Z" Stroke="{StaticResource NotchAccentBrush}" StrokeThickness="1.4" /></Canvas></Viewbox>
+          <Border x:Name="GlanceArt" Width="26" Height="26" CornerRadius="8" Background="{StaticResource NotchSurfaceActiveBrush}" Visibility="Collapsed">
+            <Image x:Name="GlanceArtImage" Stretch="UniformToFill" />
+          </Border>
+          <Ellipse x:Name="GlanceDot" Width="9" Height="9" Visibility="Collapsed" Fill="{StaticResource NotchAccentBrush}" Margin="2,0" />
+          <Grid x:Name="GlanceRing" Width="24" Height="24" Visibility="Collapsed">
+            <Ellipse Stroke="{StaticResource NotchSurfaceActiveBrush}" StrokeThickness="2.5" />
+            <Ellipse x:Name="GlanceRingProgress" Stroke="{StaticResource NotchAccentBrush}" StrokeThickness="2.5" RenderTransformOrigin="0.5,0.5">
+              <Ellipse.RenderTransform>
+                <RotateTransform Angle="-90" />
+              </Ellipse.RenderTransform>
+            </Ellipse>
+          </Grid>
+        </Grid>
+        <TextBlock x:Name="GlanceText" Grid.Column="1" Foreground="{StaticResource NotchText1Brush}" FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center" />
+        <Grid x:Name="IdleEyes" Grid.ColumnSpan="3" Width="28.5" Height="11" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" AutomationProperties.Name="Idle eyes">
+          <Border Width="6.5" Height="11" CornerRadius="3.25" Background="#F2FFFFFF" HorizontalAlignment="Left" />
+          <Border Width="6.5" Height="11" CornerRadius="3.25" Background="#F2FFFFFF" HorizontalAlignment="Right" />
+        </Grid>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock x:Name="GlanceSub" Foreground="{StaticResource NotchText2Brush}" FontSize="11.5" VerticalAlignment="Center" />
+          <StackPanel x:Name="GlanceBars" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Visibility="Collapsed">
+            <Border x:Name="Bar1" Width="3" Height="12" CornerRadius="1.5" Background="{StaticResource NotchAccentBrush}" />
+            <Border x:Name="Bar2" Width="3" Height="12" CornerRadius="1.5" Background="{StaticResource NotchAccentBrush}" />
+            <Border x:Name="Bar3" Width="3" Height="12" CornerRadius="1.5" Background="{StaticResource NotchAccentBrush}" />
+          </StackPanel>
+        </StackPanel>
+        <ProgressBar x:Name="GlanceNoticeLevel" Grid.Column="1" Grid.ColumnSpan="2" Minimum="0" Maximum="100" Height="3" MinHeight="3" Margin="0,0,0,5" VerticalAlignment="Bottom" Visibility="Collapsed" Foreground="{StaticResource NotchAccentBrush}" />
+        <!-- Volume HUD: no label, just "−  bar  +". The minus turns into a mute glyph while muted. -->
+        <Grid x:Name="GlanceVolume" Grid.ColumnSpan="3" ColumnSpacing="10" VerticalAlignment="Center" Visibility="Collapsed" AutomationProperties.Name="Volume">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <FontIcon x:Name="GlanceVolumeMinus" Glyph="&#xE738;" FontSize="12" Foreground="{StaticResource NotchText2Brush}" />
+          <ProgressBar x:Name="GlanceVolumeLevel" Grid.Column="1" Minimum="0" Maximum="100" Height="4" MinHeight="4" CornerRadius="2" VerticalAlignment="Center" Foreground="{StaticResource NotchAccentBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" />
+          <FontIcon Grid.Column="2" Glyph="&#xE710;" FontSize="12" Foreground="{StaticResource NotchText2Brush}" />
+        </Grid>
+      </Grid>
+      <!-- Open: compact page header above the content -->
+      <Grid x:Name="ExpandedPane" Width="600" Height="200" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Padding="22,8,22,14" RowSpacing="6">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="1">
+          <!-- Music: artwork and transport left; lyric context in a dedicated right column. -->
+          <Grid x:Name="MusicPage">
+            <Grid Visibility="{x:Bind Media.HasMedia, Mode=OneWay}" ColumnSpacing="18">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="88" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="188" />
+              </Grid.ColumnDefinitions>
+              <Border Width="88" Height="88" CornerRadius="14" VerticalAlignment="Top" Background="{StaticResource NotchSurfaceBrush}">
+                <Grid>
+                  <FontIcon Glyph="&#xE8D6;" FontSize="30" Foreground="{StaticResource NotchText3Brush}" Visibility="{x:Bind Media.NoArt, Mode=OneWay}" />
+                  <Image Source="{x:Bind Media.Art, Mode=OneWay}" Stretch="UniformToFill" />
+                </Grid>
+              </Border>
+              <Grid Grid.Column="1" RowSpacing="2">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="{x:Bind Media.Title, Mode=OneWay}" Foreground="{StaticResource NotchText1Brush}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                <TextBlock Grid.Row="1" Text="{x:Bind Media.Artist, Mode=OneWay}" Foreground="{StaticResource NotchText2Brush}" FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="5">
+                  <Ellipse Width="5" Height="5" Fill="{StaticResource NotchAccentBrush}" VerticalAlignment="Center" />
+                  <TextBlock Text="{x:Bind Media.SourceLabel, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="10" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Grid Grid.Row="3" Margin="0,5,0,0" RowSpacing="2">
+                  <Grid.RowDefinitions><RowDefinition Height="4" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                  <ProgressBar Minimum="0" Maximum="1" Value="{x:Bind Media.Progress, Mode=OneWay}" Foreground="{StaticResource NotchAccentBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" MinHeight="4" Height="4" CornerRadius="2" />
+                  <TextBlock Grid.Row="1" Text="{x:Bind Media.ElapsedTime, Mode=OneWay}" FontSize="10" Foreground="{StaticResource NotchText2Brush}" />
+                  <TextBlock Grid.Row="1" Text="{x:Bind Media.RemainingTime, Mode=OneWay}" HorizontalAlignment="Right" FontSize="10" Foreground="{StaticResource NotchText2Brush}" />
+                </Grid>
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Button Style="{StaticResource NotchIconButtonStyle}" Click="MediaPrevious_Click" AutomationProperties.Name="Previous track" ToolTipService.ToolTip="Previous track">
+                    <Viewbox Width="17" Height="17"><Canvas Width="20" Height="20">
+                      <Path Data="M 4,4 H 6 V 16 H 4 Z M 16,4 L 7,10 L 16,16 Z" Fill="White" />
+                    </Canvas></Viewbox>
+                  </Button>
+                  <Button Style="{StaticResource NotchPlayButtonStyle}" Width="38" Height="38" CornerRadius="19" Click="MediaPlayPause_Click" AutomationProperties.Name="{x:Bind Media.PlayPauseLabel, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Media.PlayPauseLabel, Mode=OneWay}">
+                    <Grid Width="18" Height="18">
+                      <Path Data="M 5,2 L 16,9 L 5,16 Z" Fill="Black" Visibility="{x:Bind Media.IsPaused, Mode=OneWay}" />
+                      <Path Data="M 4,3 H 7 V 15 H 4 Z M 11,3 H 14 V 15 H 11 Z" Fill="Black" Visibility="{x:Bind Media.IsPlaying, Mode=OneWay}" />
+                    </Grid>
+                  </Button>
+                  <Button Style="{StaticResource NotchIconButtonStyle}" Click="MediaNext_Click" AutomationProperties.Name="Next track" ToolTipService.ToolTip="Next track">
+                    <Viewbox Width="17" Height="17"><Canvas Width="20" Height="20">
+                      <Path Data="M 4,4 L 13,10 L 4,16 Z M 14,4 H 16 V 16 H 14 Z" Fill="White" />
+                    </Canvas></Viewbox>
+                  </Button>
+                </StackPanel>
+              </Grid>
+              <Grid Grid.Column="2" RowSpacing="3">
+                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <StackPanel Spacing="7" VerticalAlignment="Center" Visibility="{x:Bind Media.HasSyncedLyrics, Mode=OneWay}">
+                  <TextBlock Text="{x:Bind Media.PreviousLine, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="11" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{x:Bind Media.CurrentLine, Mode=OneWay}" Foreground="White" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{x:Bind Media.NextLine, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="11" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <Grid Visibility="{x:Bind Media.HasPlainLyrics, Mode=OneWay}">
+                  <TextBlock MaxLines="8" TextTrimming="CharacterEllipsis" Text="{x:Bind Media.PlainLyrics, Mode=OneWay}" Foreground="{StaticResource NotchText2Brush}" FontSize="12" TextWrapping="Wrap" />
+                </Grid>
+                <TextBlock Text="{x:Bind Media.LyricsStatus, Mode=OneWay}" Visibility="{x:Bind Media.ShowLyricsPlaceholder, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Grid Grid.Row="1">
+                  <TextBlock Text="{x:Bind Media.LyricsStatus, Mode=OneWay}" Visibility="{x:Bind Media.ShowLyricsCaption, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="9" MaxLines="1" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </Grid>
+              </Grid>
+            </Grid>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" Visibility="{x:Bind Media.NoMedia, Mode=OneWay}">
+              <FontIcon Glyph="&#xE8D6;" FontSize="30" Foreground="{StaticResource NotchText3Brush}" />
+              <TextBlock Text="Nothing playing" Foreground="{StaticResource NotchText2Brush}" FontSize="13" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Grid>
+          <controls:CalendarControl x:Name="CalendarPage" Visibility="Collapsed" />
+          <controls:SystemUsageControl x:Name="SystemUsagePage" Visibility="Collapsed" VerticalAlignment="Center" />
+          <!-- Focus: Oyenza's ring and controls, Nusa's round overview. -->
+          <Grid x:Name="FocusPage" Visibility="Collapsed" ColumnSpacing="22">
+            <Grid.Resources><SolidColorBrush x:Key="FocusAccentBrush" Color="#A178FF" /></Grid.Resources>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="142" /><ColumnDefinition Width="1" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <StackPanel Spacing="3" VerticalAlignment="Center">
+              <TextBlock Text="Pomodoro" FontSize="13" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" />
+              <Grid Width="112" Height="112">
+                <Ellipse Stroke="{StaticResource NotchSurfaceActiveBrush}" StrokeThickness="5" />
+                <Ellipse x:Name="FocusRingProgress" Stroke="{StaticResource FocusAccentBrush}" StrokeThickness="5" StrokeDashArray="0,100" RenderTransformOrigin="0.5,0.5">
+                  <Ellipse.RenderTransform><RotateTransform Angle="-90" /></Ellipse.RenderTransform>
+                </Ellipse>
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="3">
+                  <TextBlock Text="{x:Bind Focus.TimeText, Mode=OneWay}" FontSize="30" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" />
+                  <TextBlock Text="{x:Bind Focus.UntilText, Mode=OneWay}" FontSize="10" Foreground="{StaticResource NotchText2Brush}" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+            <Border Grid.Column="1" Background="{StaticResource NotchLineBrush}" Margin="0,4" />
+            <StackPanel Grid.Column="2" Spacing="7" VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="5" Visibility="{x:Bind Focus.IsIdle, Mode=OneWay}">
+                <Button x:Name="FocusModeButton" Background="{StaticResource NotchSurfaceActiveBrush}" Content="Focus 25" Style="{StaticResource NotchButtonStyle}" Click="PomodoroSelectFocus_Click" Padding="10,5" FontSize="11" />
+                <Button x:Name="ShortBreakModeButton" Content="Short 5" Style="{StaticResource NotchButtonStyle}" Click="PomodoroSelectBreak_Click" Padding="10,5" FontSize="11" />
+                <Button x:Name="LongBreakModeButton" Content="Long 15" Style="{StaticResource NotchButtonStyle}" Click="PomodoroLongBreak_Click" Padding="10,5" FontSize="11" />
+              </StackPanel>
+              <Grid ColumnSpacing="7">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind Focus.PhaseLabel, Mode=OneWay}" FontSize="11" Foreground="{StaticResource NotchText2Brush}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="{x:Bind Focus.ToggleLabel, Mode=OneWay}" Style="{StaticResource NotchAccentButtonStyle}" Click="PomodoroToggle_Click" MinWidth="75" Padding="12,5" />
+                <Button Grid.Column="2" Content="Reset" Style="{StaticResource NotchButtonStyle}" Click="PomodoroReset_Click" Padding="8,5" FontSize="11" />
+                <Button Grid.Column="3" Content="Skip" IsEnabled="{x:Bind Focus.CanSkip, Mode=OneWay}" ToolTipService.ToolTip="Skip the active phase" Style="{StaticResource NotchButtonStyle}" Click="PomodoroSkip_Click" Padding="8,5" FontSize="11" />
+              </Grid>
+              <StackPanel Spacing="5">
+                <TextBlock Text="{x:Bind Focus.RoundLabel, Mode=OneWay}" FontSize="11" Foreground="{StaticResource NotchText2Brush}" />
+                <Grid ColumnSpacing="5">
+                  <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions><RowDefinition Height="7" /><RowDefinition Height="16" /></Grid.RowDefinitions>
+                  <ProgressBar Maximum="1" Value="{x:Bind Focus.Round1, Mode=OneWay}" Height="6" MinHeight="6" Foreground="{StaticResource FocusAccentBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" CornerRadius="3" />
+                  <ProgressBar Grid.Column="1" Maximum="1" Value="{x:Bind Focus.Round2, Mode=OneWay}" Height="6" MinHeight="6" Foreground="{StaticResource FocusAccentBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" CornerRadius="3" />
+                  <ProgressBar Grid.Column="2" Maximum="1" Value="{x:Bind Focus.Round3, Mode=OneWay}" Height="6" MinHeight="6" Foreground="{StaticResource FocusAccentBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" CornerRadius="3" />
+                  <ProgressBar Grid.Column="3" Maximum="1" Value="{x:Bind Focus.Round4, Mode=OneWay}" Height="6" MinHeight="6" Foreground="{StaticResource FocusAccentBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" CornerRadius="3" />
+                  <ProgressBar Grid.Column="4" Maximum="1" Value="{x:Bind Focus.LongProgress, Mode=OneWay}" Height="6" MinHeight="6" Foreground="{StaticResource NotchGreenBrush}" Background="{StaticResource NotchSurfaceActiveBrush}" CornerRadius="3" />
+                  <TextBlock Grid.Row="1" Text="1" FontSize="9" HorizontalAlignment="Center" Foreground="{StaticResource NotchText3Brush}" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="2" FontSize="9" HorizontalAlignment="Center" Foreground="{StaticResource NotchText3Brush}" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" Text="3" FontSize="9" HorizontalAlignment="Center" Foreground="{StaticResource NotchText3Brush}" />
+                  <TextBlock Grid.Row="1" Grid.Column="3" Text="4" FontSize="9" HorizontalAlignment="Center" Foreground="{StaticResource NotchText3Brush}" />
+                  <TextBlock Grid.Row="1" Grid.Column="4" Text="Long" FontSize="9" HorizontalAlignment="Center" Foreground="{StaticResource NotchText3Brush}" />
+                </Grid>
+                <TextBlock Text="{x:Bind Focus.CycleSummary, Mode=OneWay}" FontSize="10" Foreground="{StaticResource NotchText3Brush}" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+          <Grid x:Name="PrayerPage" Visibility="Collapsed" ColumnSpacing="16">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="224" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Top" Spacing="3">
+              <TextBlock x:Name="PrayerNextLabel" Text="Next prayer" Foreground="#69ADFF" FontSize="17" FontWeight="SemiBold" />
+              <StackPanel Orientation="Horizontal" Spacing="9">
+                <TextBlock x:Name="PrayerCountdown" Text="--:--:--" FontSize="30" FontWeight="SemiBold" Foreground="White" FontFamily="Segoe UI Variable Display" />
+                <TextBlock x:Name="PrayerAt" Text="--:--" FontSize="10" Foreground="{StaticResource NotchText2Brush}" VerticalAlignment="Center" />
+              </StackPanel>
+              <TextBlock x:Name="PrayerCity" FontSize="12" Foreground="White" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="PrayerLocationDetail" FontSize="10" Foreground="{StaticResource NotchText3Brush}" />
+              <Button x:Name="PrayerPlaceButton" Content="Change place" Style="{StaticResource NotchButtonStyle}" Padding="10,5" FontSize="11" Margin="0,4,0,0" AutomationProperties.Name="Change prayer location" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" VerticalAlignment="Top" Spacing="4">
+              <Grid ColumnSpacing="6">
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="PrayerSunrise" FontSize="9" Foreground="{StaticResource NotchText2Brush}" ToolTipService.ToolTip="Sunrise at the selected location" />
+                <TextBlock x:Name="PrayerImsak" Grid.Column="1" FontSize="9" HorizontalAlignment="Center" Foreground="{StaticResource NotchText2Brush}" ToolTipService.ToolTip="Imsak from the selected day's Aladhan schedule" />
+                <TextBlock x:Name="PrayerQibla" Grid.Column="2" FontSize="9" HorizontalAlignment="Right" Foreground="{StaticResource NotchText2Brush}" ToolTipService.ToolTip="Qibla bearing clockwise from true north; not a live device compass" />
+              </Grid>
+              <Grid x:Name="PrayerArcHost" Height="64" SizeChanged="PrayerArcHost_SizeChanged">
+              <Viewbox Height="64" Stretch="Fill" HorizontalAlignment="Stretch">
+                <Canvas Width="300" Height="78">
+                  <Path Data="M 30,64 C 102,-4 198,-4 270,64" Stroke="#34373E" StrokeThickness="2" StrokeDashArray="1,3" />
+                  <Path Data="M 30,64 C 102,-4 198,-4 270,64" Stroke="#69ADFF" StrokeThickness="2">
+                    <Path.Clip><RectangleGeometry x:Name="PrayerArcClip" Rect="0,0,0,78" /></Path.Clip>
+                  </Path>
+                  <Ellipse x:Name="PrayerNode0" Canvas.Left="27" Canvas.Top="61" Width="6" Height="6" Fill="#555963" />
+                  <Ellipse x:Name="PrayerNode1" Canvas.Left="84.75" Canvas.Top="22.75" Width="6" Height="6" Fill="#555963" />
+                  <Ellipse x:Name="PrayerNode2" Canvas.Left="147.0" Canvas.Top="10.0" Width="6" Height="6" Fill="#555963" />
+                  <Ellipse x:Name="PrayerNode3" Canvas.Left="209.25" Canvas.Top="22.75" Width="6" Height="6" Fill="#555963" />
+                  <Ellipse x:Name="PrayerNode4" Canvas.Left="267" Canvas.Top="61" Width="6" Height="6" Fill="#555963" />
+                </Canvas>
+              </Viewbox>
+                <!-- Keep sky icons outside the stretched curve so their aspect ratio stays 1:1. -->
+                <Canvas>
+                  <Ellipse x:Name="PrayerMarkerBacking" Width="20" Height="20" Fill="Black" />
+                  <Ellipse x:Name="PrayerSunHalo" Width="28" Height="28">
+                    <Ellipse.Fill>
+                      <RadialGradientBrush Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+                        <GradientStop x:Name="PrayerGlowCenter" Color="#50B9AEF7" Offset="0" />
+                        <GradientStop x:Name="PrayerGlowMiddle" Color="#20B9AEF7" Offset="0.5" />
+                        <GradientStop Color="#00000000" Offset="1" />
+                      </RadialGradientBrush>
+                    </Ellipse.Fill>
+                  </Ellipse>
+                  <Grid x:Name="PrayerSkyMarker" Width="24" Height="24">
+                    <!-- Pagi: gold sun with rays rising behind a white cloud. -->
+                    <Canvas x:Name="PrayerMorning" Width="24" Height="24" Visibility="Collapsed" AutomationProperties.Name="Pagi">
+                      <Ellipse Canvas.Left="6" Canvas.Top="6.5" Width="7" Height="7" Fill="#FFD98A" />
+                      <Path Data="M9.5,3.5 V5 M3,10 H4.5 M4.9,5.4 L5.97,6.47 M14.1,5.4 L13.03,6.47 M4.9,14.6 L5.97,13.53" Stroke="#FFD98A" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                      <Path Data="M9,19 H18.5 A3,3 0 0 0 18.5,13 A4.5,4.5 0 0 0 10,13.5 A3,3 0 0 0 9,19 Z" Fill="Black" Stroke="#F2EEE6" StrokeThickness="1.4" StrokeLineJoin="Round" />
+                    </Canvas>
+                    <!-- Sore: same shape as Pagi in sunset colors (orange sun, pink cloud). -->
+                    <Canvas x:Name="PrayerAfternoon" Width="24" Height="24" Visibility="Collapsed" AutomationProperties.Name="Sore">
+                      <Ellipse Canvas.Left="6" Canvas.Top="6.5" Width="7" Height="7" Fill="#FF8A5C" />
+                      <Path Data="M9.5,3.5 V5 M3,10 H4.5 M4.9,5.4 L5.97,6.47 M14.1,5.4 L13.03,6.47 M4.9,14.6 L5.97,13.53" Stroke="#FF8A5C" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                      <Path Data="M9,19 H18.5 A3,3 0 0 0 18.5,13 A4.5,4.5 0 0 0 10,13.5 A3,3 0 0 0 9,19 Z" Fill="Black" Stroke="#F2A7B8" StrokeThickness="1.4" StrokeLineJoin="Round" />
+                    </Canvas>
+                    <!-- Siang: full overhead sun with long rays, bright yellow. -->
+                    <Canvas x:Name="PrayerSun" Width="24" Height="24" AutomationProperties.Name="Siang">
+                      <Ellipse Canvas.Left="7.5" Canvas.Top="7.5" Width="9" Height="9" Fill="#FFD24A" />
+                      <Path Data="M12,2.5 V5 M12,19 V21.5 M2.5,12 H5 M19,12 H21.5 M5.28,5.28 L7.05,7.05 M18.72,18.72 L16.95,16.95 M5.28,18.72 L7.05,16.95 M18.72,5.28 L16.95,7.05" Stroke="#FFD24A" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    </Canvas>
+                    <!-- Malam: crescent moon with stars, lavender. -->
+                    <Canvas x:Name="PrayerMoon" Visibility="Collapsed" Width="24" Height="24" AutomationProperties.Name="Malam">
+                      <Path Data="M16.72,15.02 A6.4,6.4 0 1 1 8.98,7.28 A5.6,5.6 0 0 0 16.72,15.02 Z" Fill="#C9C0FF" />
+                      <Path Data="M18,2.8 L18.8,5.2 L21.2,6 L18.8,6.8 L18,9.2 L17.2,6.8 L14.8,6 L17.2,5.2 Z" Fill="#E6E1FF" />
+                      <Ellipse Canvas.Left="20.1" Canvas.Top="11" Width="1.8" Height="1.8" Fill="#B3C9C0FF" />
+                      <Ellipse Canvas.Left="12.6" Canvas.Top="2.6" Width="1.4" Height="1.4" Fill="#99C9C0FF" />
+                    </Canvas>
+                  </Grid>
+                </Canvas>
+              </Grid>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" HorizontalAlignment="Center" Spacing="3"><TextBlock x:Name="PrayerLabel0" Text="Subuh" FontSize="10" Foreground="#888B93" HorizontalAlignment="Center" /><TextBlock x:Name="PrayerTime0" Text="--:--" FontSize="11" Foreground="White" HorizontalAlignment="Center" /></StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" Spacing="3"><TextBlock x:Name="PrayerLabel1" Text="Dzuhur" FontSize="10" Foreground="#888B93" HorizontalAlignment="Center" /><TextBlock x:Name="PrayerTime1" Text="--:--" FontSize="11" Foreground="White" HorizontalAlignment="Center" /></StackPanel>
+                <StackPanel Grid.Column="2" HorizontalAlignment="Center" Spacing="3"><TextBlock x:Name="PrayerLabel2" Text="Ashar" FontSize="10" Foreground="#888B93" HorizontalAlignment="Center" /><TextBlock x:Name="PrayerTime2" Text="--:--" FontSize="11" Foreground="White" HorizontalAlignment="Center" /></StackPanel>
+                <StackPanel Grid.Column="3" HorizontalAlignment="Center" Spacing="3"><TextBlock x:Name="PrayerLabel3" Text="Maghrib" FontSize="10" Foreground="#888B93" HorizontalAlignment="Center" /><TextBlock x:Name="PrayerTime3" Text="--:--" FontSize="11" Foreground="White" HorizontalAlignment="Center" /></StackPanel>
+                <StackPanel Grid.Column="4" HorizontalAlignment="Center" Spacing="3"><TextBlock x:Name="PrayerLabel4" Text="Isya" FontSize="10" Foreground="#888B93" HorizontalAlignment="Center" /><TextBlock x:Name="PrayerTime4" Text="--:--" FontSize="11" Foreground="White" HorizontalAlignment="Center" /></StackPanel>
+              </Grid>
+              <TextBlock x:Name="PrayerStatus" FontSize="9" Foreground="{StaticResource NotchText3Brush}" HorizontalAlignment="Right" Margin="0,5,0,0" />
+            </StackPanel>
+          </Grid>
+          <!-- Agents: account quota cards first; existing activity remains below. -->
+          <Grid Visibility="Collapsed" x:Name="AgentsHost">
+            <StackPanel x:Name="AgentsPage" Spacing="9" Padding="0,0,0,3" VerticalAlignment="Top" SizeChanged="AgentsPage_SizeChanged">
+              <!-- A Claude Code permission prompt forwarded by its PermissionRequest hook; answered here or in the terminal. -->
+              <Border x:Name="ApprovalCard" Visibility="Collapsed" Style="{StaticResource NotchCardStyle}" BorderBrush="{StaticResource NotchAmberBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                  <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ApprovalTitle" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource NotchText1Brush}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                    <TextBlock x:Name="ApprovalMeta" Grid.Column="1" FontSize="10" Foreground="{StaticResource NotchText3Brush}" VerticalAlignment="Center" />
+                  </Grid>
+                  <TextBlock x:Name="ApprovalDetail" FontFamily="Cascadia Mono, Consolas" FontSize="11" Foreground="{StaticResource NotchText2Brush}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Allow" Style="{StaticResource NotchAccentButtonStyle}" Click="ApprovalAllow_Click" Padding="14,4" FontSize="11" />
+                    <Button Content="Deny" Style="{StaticResource NotchDangerButtonStyle}" Click="ApprovalDeny_Click" />
+                    <Button Content="Ask in terminal" Style="{StaticResource NotchButtonStyle}" Click="ApprovalTerminal_Click" Padding="10,4" FontSize="11" />
+                    <Button Content="Show terminal" Style="{StaticResource NotchButtonStyle}" Click="ApprovalFocus_Click" Padding="10,4" FontSize="11" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+              <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Spacing="1" VerticalAlignment="Center"><TextBlock Text="ACCOUNT USAGE" FontSize="10" CharacterSpacing="80" Foreground="{StaticResource NotchText2Brush}" VerticalAlignment="Center" /><TextBlock x:Name="UsageUpdatedLabel" Text="Not updated yet" FontSize="9" Foreground="{StaticResource NotchText3Brush}" /></StackPanel>
+                <Button Grid.Column="1" x:Name="UsageRefreshButton" Content="Refresh" Style="{StaticResource NotchButtonStyle}" Padding="10,4" FontSize="10" Click="UsageRefresh_Click" ToolTipService.ToolTip="Refresh due providers; Codex/Claude 2 min, Muse 5 min, Antigravity 15 min" />
+                <Button Grid.Column="2" x:Name="UsageServicesButton" Content="Services" Style="{StaticResource NotchButtonStyle}" Padding="10,4" FontSize="10" />
+              </Grid>
+              <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                <StackPanel Spacing="8"><controls:UsageCardControl x:Name="CodexUsageCard" ResetRequested="CodexResetRequested" /><controls:UsageCardControl x:Name="AntigravityUsageCard" /></StackPanel>
+                <StackPanel Grid.Column="1" Spacing="8"><controls:UsageCardControl x:Name="ClaudeUsageCard" /><controls:UsageCardControl x:Name="MuseUsageCard" /></StackPanel>
+              </Grid>
+              <TextBlock x:Name="UsageResetStatus" FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource NotchText2Brush}" Visibility="Collapsed" />
+              <TextBlock x:Name="UsageEmpty" Text="Choose a service to show its usage." Visibility="Collapsed" Foreground="{StaticResource NotchText3Brush}" FontSize="11" />
+              <Border Height="1" Background="#252525" Margin="0,2" />
+              <TextBlock Text="AGENT ACTIVITY" FontSize="10" CharacterSpacing="80" Foreground="{StaticResource NotchText3Brush}" />
+              <controls:AgentAlertControl x:Name="AgentAlert" Visibility="Collapsed" />
+              <StackPanel x:Name="SessionsPanel" Visibility="Collapsed" Spacing="1">
+                <TextBlock Text="SESSIONS" FontSize="10" CharacterSpacing="80" Foreground="{StaticResource NotchText3Brush}" Margin="0,0,0,2" />
+                <ItemsControl ItemsSource="{x:Bind SessionItems}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:AgentSessionItem">
+                      <Button Style="{StaticResource NotchButtonStyle}" Background="Transparent" Tag="{x:Bind Key}" Click="Session_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="6,4" CornerRadius="10" ToolTipService.ToolTip="Focus this session's window">
+                        <Grid ColumnSpacing="9">
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                          <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind controls:UiBrushes.ForStatus(Status)}" />
+                          <TextBlock Grid.Column="1" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="12" FontWeight="Normal" Foreground="{StaticResource NotchText1Brush}">
+                            <Run Text="{x:Bind Title}" FontWeight="SemiBold" />
+                            <Run Text=" · " Foreground="{StaticResource NotchText3Brush}" />
+                            <Run Text="{x:Bind Message}" Foreground="{StaticResource NotchText2Brush}" />
+                          </TextBlock>
+                          <TextBlock Grid.Column="2" Text="{x:Bind TimeText}" FontSize="11" FontWeight="Normal" Foreground="{StaticResource NotchText3Brush}" VerticalAlignment="Center" />
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+              <StackPanel x:Name="AgentsEmpty" Spacing="3">
+                <TextBlock Text="Waiting for local agent notifications" Foreground="{StaticResource NotchText2Brush}" FontSize="11" />
+              </StackPanel>
+              <Grid x:Name="ActivityPager" Visibility="Collapsed" ColumnSpacing="6">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="RecentHeader" Text="RECENT" Foreground="{StaticResource NotchText3Brush}" FontSize="10" VerticalAlignment="Center" />
+                <Button x:Name="PreviousActivityPage" Grid.Column="1" Content="Previous" Click="PreviousActivityPage_Click" Style="{StaticResource NotchButtonStyle}" Padding="8,3" FontSize="10" />
+                <Button x:Name="NextActivityPage" Grid.Column="2" Content="Next" Click="NextActivityPage_Click" Style="{StaticResource NotchButtonStyle}" Padding="8,3" FontSize="10" />
+              </Grid>
+                <ItemsControl ItemsSource="{x:Bind ActivityHistoryPage}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:AgentActivityItem">
+                      <Grid ColumnSpacing="10" Padding="2,5">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Ellipse Width="7" Height="7" VerticalAlignment="Center" Fill="{x:Bind controls:UiBrushes.ForStatus(Status)}" />
+                        <TextBlock Grid.Column="1" TextTrimming="CharacterEllipsis" MaxLines="1" FontSize="12" Foreground="{StaticResource NotchText1Brush}">
+                          <Run Text="{x:Bind Agent}" FontWeight="SemiBold" />
+                          <Run Text=" · " Foreground="{StaticResource NotchText3Brush}" />
+                          <Run Text="{x:Bind Message}" Foreground="{StaticResource NotchText2Brush}" />
+                        </TextBlock>
+                        <TextBlock Grid.Column="2" Text="{x:Bind TimeText}" FontSize="11" Foreground="{StaticResource NotchText3Brush}" VerticalAlignment="Center" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+          </Grid>
+          <!-- Dev: clipboard + ports -->
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="Collapsed" x:Name="DevPageScroller" Padding="0,0,8,0">
+            <StackPanel x:Name="DevPage" Spacing="8" MinHeight="120">
+              <Border Style="{StaticResource NotchCardStyle}" CornerRadius="20">
+                <Grid>
+                  <StackPanel Spacing="6" Visibility="{x:Bind DevTools.HasClipboardAction, Mode=OneWay}">
+                    <Grid ColumnSpacing="8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Border Width="28" Height="28" CornerRadius="8" VerticalAlignment="Center" BorderBrush="#33FFFFFF" BorderThickness="1" Background="{x:Bind DevTools.SwatchBrush, Mode=OneWay}" Visibility="{x:Bind DevTools.HasSwatch, Mode=OneWay}" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Bind DevTools.ClipboardActionLabel, Mode=OneWay}" Foreground="{StaticResource NotchAccentBrush}" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind DevTools.Detection.Detail, Mode=OneWay}" Foreground="{StaticResource NotchText2Brush}" FontSize="11" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                      </StackPanel>
+                      <Button Grid.Column="2" Content="Copy" Style="{StaticResource NotchAccentButtonStyle}" Click="CopyFormatted_Click" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBox Text="{x:Bind DevTools.Detection.Formatted, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="84" FontSize="11" FontFamily="Cascadia Mono, Consolas" />
+                  </StackPanel>
+                  <TextBlock Text="Copy a JWT, JSON, timestamp, UUID, color, cron line, URL or Base64 text and it's decoded here." Visibility="{x:Bind DevTools.NoClipboardAction, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="12" TextWrapping="Wrap" />
+                </Grid>
+              </Border>
+              <Grid Margin="4,2,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="LOCAL DEV SERVERS" Foreground="{StaticResource NotchText3Brush}" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100" VerticalAlignment="Center" />
+                  <TextBlock Text="{x:Bind DevTools.PortsStatus, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="10" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button Grid.Column="1" Style="{StaticResource NotchIconButtonStyle}" Width="28" Height="28" CornerRadius="14" Click="RefreshPorts_Click" AutomationProperties.Name="Refresh ports">
+                  <FontIcon Glyph="" FontSize="12" />
+                </Button>
+              </Grid>
+              <ItemsControl ItemsSource="{x:Bind DevTools.Ports}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="models:ListeningPortInfo">
+                    <Grid ColumnSpacing="6" Padding="4,3">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="{x:Bind Port}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" />
+                      <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind ProjectPath}"><TextBlock Text="{x:Bind ProjectLabel}" FontSize="12" Foreground="{StaticResource NotchText1Brush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind Subtitle}" FontSize="10" Foreground="{StaticResource NotchText3Brush}" TextTrimming="CharacterEllipsis" /></StackPanel>
+                      <Button Grid.Column="2" Content="Open" Style="{StaticResource NotchButtonStyle}" Padding="9,4" FontSize="11" CornerRadius="11" Tag="{x:Bind OpenUrl}" Click="OpenUrl_Click" ToolTipService.ToolTip="Open in the browser" />
+                      <Button Grid.Column="3" Content="Restart" Style="{StaticResource NotchButtonStyle}" Padding="9,4" FontSize="11" CornerRadius="11" Tag="{x:Bind StopToken}" Click="RestartServer_Click" ToolTipService.ToolTip="Stop it, then rerun its command in a new terminal" />
+                      <Button Grid.Column="4" Content="Stop" Style="{StaticResource NotchDangerButtonStyle}" Tag="{x:Bind StopToken}" Click="KillButton_Click" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <!-- Containers: only when the Docker CLI is installed. -->
+              <StackPanel Spacing="2" Visibility="{x:Bind DevTools.DockerAvailable, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,2,0,0">
+                  <TextBlock Text="CONTAINERS" Foreground="{StaticResource NotchText3Brush}" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100" VerticalAlignment="Center" />
+                  <TextBlock Text="{x:Bind DevTools.ContainersStatus, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="10" VerticalAlignment="Center" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{x:Bind DevTools.Containers}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="viewmodels:DockerContainerItem">
+                      <Grid ColumnSpacing="6" Padding="4,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="1" VerticalAlignment="Center"><TextBlock Text="{x:Bind Name}" FontSize="12" Foreground="{StaticResource NotchText1Brush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind Subtitle}" FontSize="10" Foreground="{StaticResource NotchText3Brush}" TextTrimming="CharacterEllipsis" /></StackPanel>
+                        <Button Grid.Column="1" Content="Open" Visibility="{x:Bind HasOpen}" Style="{StaticResource NotchButtonStyle}" Padding="9,4" FontSize="11" CornerRadius="11" Tag="{x:Bind OpenUrl}" Click="OpenUrl_Click" />
+                        <Button Grid.Column="2" Content="Stop" Style="{StaticResource NotchDangerButtonStyle}" Tag="{x:Bind Id}" Click="StopContainer_Click" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+              <!-- Repositories behind the dev servers and agent sessions: branch, changes, latest CI run. -->
+              <StackPanel Spacing="2" Visibility="{x:Bind DevTools.HasRepos, Mode=OneWay}">
+                <TextBlock Text="REPOSITORIES" Foreground="{StaticResource NotchText3Brush}" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100" Margin="4,2,0,0" />
+                <ItemsControl ItemsSource="{x:Bind DevTools.Repos}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="viewmodels:RepoItem">
+                      <Grid ColumnSpacing="6" Padding="4,3">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="1" VerticalAlignment="Center" ToolTipService.ToolTip="{x:Bind Path}"><TextBlock Text="{x:Bind Name}" FontSize="12" Foreground="{StaticResource NotchText1Brush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{x:Bind Subtitle}" FontSize="10" Foreground="{StaticResource NotchText3Brush}" TextTrimming="CharacterEllipsis" /></StackPanel>
+                        <Button Grid.Column="1" Visibility="{x:Bind HasCi}" Style="{StaticResource NotchButtonStyle}" Padding="9,4" FontSize="11" CornerRadius="11" Tag="{x:Bind CiUrl}" Click="OpenUrl_Click" ToolTipService.ToolTip="Open the latest CI run">
+                          <StackPanel Orientation="Horizontal" Spacing="5"><Ellipse Width="6" Height="6" Fill="{x:Bind CiBrush}" VerticalAlignment="Center" /><TextBlock Text="{x:Bind CiText}" /></StackPanel>
+                        </Button>
+                        <Button Grid.Column="2" Content="Terminal" Style="{StaticResource NotchButtonStyle}" Padding="9,4" FontSize="11" CornerRadius="11" Tag="{x:Bind Path}" Click="OpenRepoTerminal_Click" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+              <!-- Recent clipboard texts, memory only; click to copy again. -->
+              <StackPanel Spacing="2" Visibility="{x:Bind DevTools.HasClips, Mode=OneWay}">
+                <Grid Margin="4,2,0,0">
+                  <TextBlock Text="RECENT CLIPS" Foreground="{StaticResource NotchText3Brush}" FontSize="10" FontWeight="SemiBold" CharacterSpacing="100" VerticalAlignment="Center" />
+                  <Button Content="Clear" HorizontalAlignment="Right" Style="{StaticResource NotchButtonStyle}" Padding="8,2" FontSize="10" Click="ClearClips_Click" />
+                </Grid>
+                <ItemsControl ItemsSource="{x:Bind DevTools.Clips}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:ClipboardClip">
+                      <Button Style="{StaticResource NotchButtonStyle}" Background="Transparent" Tag="{x:Bind Text}" Click="CopyClip_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="6,3" CornerRadius="10" ToolTipService.ToolTip="Copy again">
+                        <Grid ColumnSpacing="8">
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                          <TextBlock Text="{x:Bind Preview}" FontSize="11" FontWeight="Normal" FontFamily="Cascadia Mono, Consolas" Foreground="{StaticResource NotchText1Brush}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                          <TextBlock Grid.Column="1" Text="{x:Bind KindLabel}" Visibility="{x:Bind HasKind}" FontSize="10" FontWeight="Normal" Foreground="{StaticResource NotchText3Brush}" VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="2" Text="{x:Bind TimeText}" FontSize="10" FontWeight="Normal" Foreground="{StaticResource NotchText3Brush}" VerticalAlignment="Center" />
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+          <controls:SettingsControl x:Name="SettingsPage" Visibility="Collapsed" />
+          <!-- Run: command palette -->
+          <Grid x:Name="RunPage" Visibility="Collapsed" RowSpacing="8">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="6"><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBlock Text="ACTIONS" FontSize="11" Foreground="{StaticResource NotchText2Brush}" VerticalAlignment="Center" />
+              <Button x:Name="PreviousActions" Grid.Column="1" Content="&#x2039;" Click="PreviousActions_Click" Style="{StaticResource NotchButtonStyle}" Padding="8,1" FontSize="14" AutomationProperties.Name="Previous actions" />
+              <TextBlock x:Name="ActionPageLabel" Grid.Column="2" FontSize="10" Foreground="{StaticResource NotchText3Brush}" VerticalAlignment="Center" />
+              <Button x:Name="NextActions" Grid.Column="3" Content="&#x203A;" Click="NextActions_Click" Style="{StaticResource NotchButtonStyle}" Padding="8,1" FontSize="14" AutomationProperties.Name="Next actions" />
+            </Grid>
+            <TextBlock Grid.Row="1" Text="{x:Bind Palette.StatusText, Mode=OneWay}" Foreground="{StaticResource NotchText3Brush}" FontSize="11" Margin="6,0,0,0" />
+            <ListView x:Name="PaletteList" Grid.Row="2" ItemsSource="{x:Bind Palette.Matches, Mode=OneWay}" SelectionMode="Single" IsItemClickEnabled="True" ItemClick="PaletteList_ItemClick">
+              <ListView.Resources>
+                <SolidColorBrush x:Key="ListViewItemBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#0FFFFFFF" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#17FFFFFF" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#1DFFFFFF" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#17FFFFFF" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#1DFFFFFF" />
+                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="#FFF0892E" />
+              </ListView.Resources>
+              <ListView.ItemTemplate>
+                <DataTemplate x:DataType="models:SavedCommand">
+                  <TextBlock Text="{x:Bind DisplayText, Mode=OneWay}" FontSize="13" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ListView.ItemTemplate>
+            </ListView>
+          </Grid>
+        </Grid>
+        <!-- Persistent page icons with an icon-and-label capsule for the selected tab. -->
+        <Grid x:Name="NavigationHeader" Grid.Row="0" Height="28" Background="Transparent">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Right">
+            <TextBlock x:Name="HeaderDate" FontSize="11" Foreground="{StaticResource NotchText2Brush}" VerticalAlignment="Center" />
+            <TextBlock x:Name="HeaderTime" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" />
+          </StackPanel>          <StackPanel x:Name="TabBar" Grid.Column="0" Orientation="Horizontal" Spacing="4" PointerWheelChanged="TabBar_PointerWheelChanged" HorizontalAlignment="Left">
+            <RadioButton x:Name="MusicTab" GroupName="NotchTabs" Tag="Music" IsChecked="True" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Music" AutomationProperties.Name="Music">
+              <Grid Height="26">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Viewbox x:Name="MusicNavIcon" Width="16" Height="16" Opacity="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                  <Canvas Width="18" Height="18">
+                    <Path Data="M 7,12 V 3 L 16,1 V 10 M 7,5 L 16,3 M 7,12 C 7,15 2,16 2,13 C 2,11 7,10 7,12 M 16,10 C 16,13 11,14 11,11 C 11,9 16,8 16,10" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                  </Canvas>
+                </Viewbox>
+                <TextBlock x:Name="MusicNavLabel" Grid.Column="1" Text="Music" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="CalendarTab" GroupName="NotchTabs" Tag="Calendar" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Calendar" AutomationProperties.Name="Calendar">
+              <Grid Height="26"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Viewbox x:Name="CalendarNavIcon" Width="16" Height="16" VerticalAlignment="Center"><Canvas Width="18" Height="18"><Path Data="M4,2 H14 Q16,2 16,4 V14 Q16,16 14,16 H4 Q2,16 2,14 V4 Q2,2 4,2 Z M2,6 H16 M6,1 V4 M12,1 V4 M5,9 H6 M9,9 H10 M13,9 H14 M5,12 H6 M9,12 H10" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /></Canvas></Viewbox>
+                <TextBlock x:Name="CalendarNavLabel" Grid.Column="1" Text="Calendar" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="FocusTab" GroupName="NotchTabs" Tag="Focus" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Focus" AutomationProperties.Name="Focus">
+              <Grid Height="26">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Viewbox x:Name="FocusNavIcon" Width="16" Height="16" Opacity="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                  <Canvas Width="18" Height="18">
+                    <Path Data="M 7,1 H 11 M 9,1 V 3 M 14,3 L 16,1 M 9,7 V 11 L 12,12 M 16,11 A 7,7 0 1 1 2,11 A 7,7 0 1 1 16,11" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                  </Canvas>
+                </Viewbox>
+                <TextBlock x:Name="FocusNavLabel" Grid.Column="1" Text="Focus" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="PrayerTab" GroupName="NotchTabs" Tag="Prayer" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Prayer" AutomationProperties.Name="Prayer times">
+              <Grid Height="26"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Viewbox x:Name="PrayerNavIcon" Width="16" Height="16" VerticalAlignment="Center"><Canvas Width="18" Height="18"><Path Data="M 12,1 A 8,8 0 1 0 17,12 A 7,7 0 0 1 12,1 Z" Stroke="White" StrokeThickness="1.4" /></Canvas></Viewbox>
+                <TextBlock x:Name="PrayerNavLabel" Grid.Column="1" Text="Prayer" Visibility="Collapsed" FontSize="12" Foreground="White" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="AgentsTab" GroupName="NotchTabs" Tag="Agents" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Agents" AutomationProperties.Name="Agents">
+              <Grid Height="26">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Viewbox x:Name="AgentsNavIcon" Width="16" Height="16" Opacity="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                  <Canvas Width="18" Height="18">
+                    <Path Data="M 7,3 C 7.7,7.4 9,8.7 13,9.5 C 9,10.3 7.7,11.6 7,16 C 6.3,11.6 5,10.3 1,9.5 C 5,8.7 6.3,7.4 7,3 Z M 14,0.8 V 5.2 M 11.8,3 H 16.2 M 15,12.5 V 16.5 M 13,14.5 H 17" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                  </Canvas>
+                </Viewbox>
+                <Ellipse x:Name="AgentsBadge" Width="5" Height="5" Visibility="Collapsed" Fill="{StaticResource NotchAccentBrush}" Stroke="Black" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,-3,0" Grid.ColumnSpan="2" />
+                <TextBlock x:Name="AgentsNavLabel" Grid.Column="1" Text="Agents" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="SystemTab" GroupName="NotchTabs" Tag="System" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="System Usage" AutomationProperties.Name="System Usage">
+              <Grid Height="26"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Viewbox x:Name="SystemNavIcon" Width="16" Height="16" VerticalAlignment="Center"><Canvas Width="18" Height="18"><Path Data="M4.05,14.95 A7,7 0 1 1 13.95,14.95 M9,10 L12,7" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /><Ellipse Canvas.Left="7.9" Canvas.Top="8.9" Width="2.2" Height="2.2" Fill="{StaticResource NotchText1Brush}" /></Canvas></Viewbox>
+                <TextBlock x:Name="SystemNavLabel" Grid.Column="1" Text="System Usage" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="DevTab" GroupName="NotchTabs" Tag="Dev" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Developer" AutomationProperties.Name="Developer">
+              <Grid Height="26">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Viewbox x:Name="DevNavIcon" Width="16" Height="16" Opacity="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                  <Canvas Width="18" Height="18">
+                    <Path Data="M5.5,5 L1.5,9 L5.5,13 M12.5,5 L16.5,9 L12.5,13 M10.5,3 L7.5,15" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                  </Canvas>
+                </Viewbox>
+                <Ellipse x:Name="DevBadge" Width="5" Height="5" Visibility="Collapsed" Fill="{StaticResource NotchAccentBrush}" Stroke="Black" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,-3,0" Grid.ColumnSpan="2" />
+                <TextBlock x:Name="DevNavLabel" Grid.Column="1" Text="Developer" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="RunTab" GroupName="NotchTabs" Tag="Run" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Actions" AutomationProperties.Name="Commands">
+              <Grid Height="26">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Viewbox x:Name="RunNavIcon" Width="16" Height="16" Opacity="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                  <Canvas Width="18" Height="18">
+                    <Path Data="M10.5,1.5 L3.5,10 H9 L7.5,16.5 L14.5,8 H9 Z" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                  </Canvas>
+                </Viewbox>
+                <TextBlock x:Name="RunNavLabel" Grid.Column="1" Text="Actions" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+            <RadioButton x:Name="SettingsTab" GroupName="NotchTabs" Tag="Settings" Style="{StaticResource NotchTabStyle}" Checked="Tab_Checked" ToolTipService.ToolTip="Settings" AutomationProperties.Name="Settings">
+              <Grid Height="26"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Viewbox x:Name="SettingsNavIcon" Width="16" Height="16" VerticalAlignment="Center"><Canvas Width="18" Height="18"><Path Data="M 9,6 A 3,3 0 1 1 9,12 A 3,3 0 1 1 9,6 Z M 9,1 V 3.5 M 9,14.5 V 17 M 1,9 H 3.5 M 14.5,9 H 17 M 3.3,3.3 L 5.1,5.1 M 12.9,12.9 L 14.7,14.7 M 3.3,14.7 L 5.1,12.9 M 12.9,5.1 L 14.7,3.3" Stroke="{StaticResource NotchText1Brush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /></Canvas></Viewbox>
+                <TextBlock x:Name="SettingsNavLabel" Grid.Column="1" Text="Settings" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource NotchText1Brush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </Grid>
+            </RadioButton>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Grid>
+    <Grid x:Name="RimHost" Margin="0" IsHitTestVisible="False" />
+  </Grid>
+</Window>
