@@ -46,6 +46,12 @@ public sealed class LyricsService : IDisposable
             var found = LyricsMatching.Decode(LyricsMatching.Select(candidates, query), query.Duration);
             if (found is LyricsResult.Synced or LyricsResult.Instrumental) return Remember(query, found, ct);
             if (found is LyricsResult.Plain) fallback = found;
+            // Free-text search tolerates artist/title spelling differences the structured search misses.
+            var freeText = Uri.EscapeDataString($"{LyricsMatching.PrimaryArtist(query.Artist)} {title}".Trim());
+            var looseCandidates = await SearchAsync($"https://lrclib.net/api/search?q={freeText}", ct).ConfigureAwait(false);
+            var loose = LyricsMatching.Decode(LyricsMatching.Select(looseCandidates, query), query.Duration);
+            if (loose is LyricsResult.Synced or LyricsResult.Instrumental) return Remember(query, loose, ct);
+            if (loose is LyricsResult.Plain && fallback is not LyricsResult.Plain) fallback = loose;
             var urls = new List<string>();
             var albumParameter = string.IsNullOrWhiteSpace(query.Album) ? string.Empty : $"&album_name={Uri.EscapeDataString(query.Album)}";
             if (query.Duration.TotalSeconds is >= 1 and <= 3600)

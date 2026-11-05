@@ -71,6 +71,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueueTimer _prayerClockTimer;
     private readonly DispatcherQueueTimer _lyricTimer;
     private readonly DispatcherQueueTimer _progressTimer;
+    private readonly DispatcherQueueTimer _lyricResyncTimer;
     private readonly DispatcherQueueTimer _settleTimer;
 
     private bool _ready;
@@ -160,6 +161,11 @@ public sealed partial class MainWindow : Window
         _progressTimer.Interval = TimeSpan.FromSeconds(1);
         _progressTimer.IsRepeating = true;
         _progressTimer.Tick += (_, _) => UpdateProgress();
+        // Players rarely push position updates, so periodically re-read SMTC to cancel extrapolation drift.
+        _lyricResyncTimer = _dispatcher.CreateTimer();
+        _lyricResyncTimer.Interval = TimeSpan.FromSeconds(2);
+        _lyricResyncTimer.IsRepeating = true;
+        _lyricResyncTimer.Tick += (_, _) => { ResyncTimeline(); UpdateLyricState(); };
 
         _shape = GlanceSizeFor(GlanceKind.Clock);
         _windowDip = StageFor(_shape);
@@ -511,7 +517,7 @@ public sealed partial class MainWindow : Window
             bool gainedDuration = !_timeline.IsKnown && timeline.IsKnown;
             _timeline = timeline;
             if (gainedDuration && _lastTrack.HasSession &&
-                _lyricsState is LyricsState.Finished { Result: LyricsResult.Missing or LyricsResult.Failed }
+                _lyricsState is LyricsState.Finished { Result: LyricsResult.Missing or LyricsResult.Failed or LyricsResult.Plain }
                     or LyricsState.Waiting)
                 _ = LoadLyricsAsync(_lastTrack);
             UpdateLyricState();
@@ -625,7 +631,15 @@ public sealed partial class MainWindow : Window
             case LyricsResult.Failed failed:
                 Media.SetLyricsAvailability(LyricsAvailability.Failed, failed.Message); break;
         }
+        ResyncTimeline();
         UpdateLyricState();
+    }
+
+    private void ResyncTimeline()
+    {
+        if (_media.ReadCurrentTimeline() is not { } fresh) return;
+        if (!fresh.IsKnown && _timeline.IsKnown) return;
+        _timeline = fresh;
     }
 
     private async Task RetryLyricsAutomaticallyAsync(ScheduleLyricsRetry command, CancellationToken ct)
@@ -648,6 +662,9 @@ public sealed partial class MainWindow : Window
     private void UpdateLyricState()
     {
         _lyricTimer.Stop();
+        bool resync = _lyrics.Count > 0 && _lastTrack is { HasSession: true, IsPlaying: true };
+        if (resync && !_lyricResyncTimer.IsRunning) _lyricResyncTimer.Start();
+        else if (!resync && _lyricResyncTimer.IsRunning) _lyricResyncTimer.Stop();
         if (_lyrics.Count == 0 || !_lastTrack.HasSession)
         {
             if (Media.HasLyrics) { Media.SetLyric(string.Empty, string.Empty); RefreshGlance(); }
@@ -1375,6 +1392,7 @@ public sealed partial class MainWindow : Window
         _glanceTimer.Stop();
         _headerClockTimer.Stop();
         _lyricTimer.Stop();
+        _lyricResyncTimer.Stop();
         _prayerClockTimer.Stop();
         _progressTimer.Stop();
         _beat.Stop();

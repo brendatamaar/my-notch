@@ -101,9 +101,9 @@ handler = new FakeHandler((i, request) => new HttpResponseMessage(HttpStatusCode
     Content = new StringContent(request.RequestUri!.AbsolutePath.EndsWith("search") ? "[" + Record(plain:"unsynced lyrics") + "]" : Record(plain:"unsynced lyrics")) });
 using (var service = new LyricsService(handler)) {
     Check(await service.GetAsync(query, default) is LyricsResult.Plain { Text: "unsynced lyrics" }, "preserve plain fallback");
-    Check(handler.Calls == 3, "plain search still tries exact synced editions");
+    Check(handler.Calls == 4, "plain search still tries exact synced editions");
     await service.GetAsync(query, default);
-    Check(handler.Calls == 3, "plain lyrics available immediately on returning to a song");
+    Check(handler.Calls == 4, "plain lyrics available immediately on returning to a song");
 }
 handler = new FakeHandler((i, request) => new HttpResponseMessage(i == 0 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) {
     Content = new StringContent("[" + Record("[00:01.00]recovered") + "]") });
@@ -149,9 +149,22 @@ var automatic = LyricsLookup.Step(waiting.State, new LyricsInput.RetryDue(waitin
 Check(automatic.Command is FetchLyrics && automatic.State.Attempt > waiting.State.Attempt, "automatic retry starts a fresh fetch");
 var secondWait = LyricsLookup.Step(automatic.State, new LyricsInput.Completed(automatic.State.Attempt, new LyricsResult.Missing()));
 Check(secondWait.Command is ScheduleLyricsRetry {Delay.TotalSeconds:8}, "second automatic backoff");
-var lastRequest = LyricsLookup.Step(secondWait.State, new LyricsInput.RetryDue(secondWait.State.Attempt));
+var exhaustedState = secondWait.State;
+for (int n = 0; n < 2; n++) {
+    var due = LyricsLookup.Step(exhaustedState, new LyricsInput.RetryDue(exhaustedState.Attempt));
+    exhaustedState = LyricsLookup.Step(due.State, new LyricsInput.Completed(due.State.Attempt, new LyricsResult.Missing())).State;
+}
+var lastRequest = LyricsLookup.Step(exhaustedState, new LyricsInput.RetryDue(exhaustedState.Attempt));
 var exhausted = LyricsLookup.Step(lastRequest.State, new LyricsInput.Completed(lastRequest.State.Attempt, new LyricsResult.Missing()));
-Check(exhausted.State is LyricsState.Finished && exhausted.Command is null, "automatic retries stop after two retries");
+Check(exhausted.State is LyricsState.Finished && exhausted.Command is null, "missing lyrics stop retrying after four retries");
+Check(LyricsLookup.RetryDelay(new LyricsResult.Failed("offline"), 50) == TimeSpan.FromSeconds(60), "transient failure keeps retrying with capped backoff");
+Check(LyricsMatching.Select([new LrclibResponse { TrackName = "Song", ArtistName = "Artist", Duration = 190, SyncedLyrics = "[00:01.00]ok" }], query) is not null,
+    "tolerate ten-second duration drift");
+Check(LyricsMatching.Select([new LrclibResponse { TrackName = "Song", ArtistName = "Artist - Topic", Duration = 180, SyncedLyrics = "[00:01.00]ok" }], query) is not null,
+    "artist Topic suffix ignored");
+Check(LyricsMatching.Select([new LrclibResponse { TrackName = "Song", ArtistName = "Someone Else", Duration = 181, SyncedLyrics = "[00:01.00]ok" }], query) is not null,
+    "identical title and near-identical length matches despite artist spelling");
+Check(LyricsMatching.CleanTitle("Song - Remastered 2011") == "Song", "remaster suffix removed");
 Check(LyricsLookup.Step(firstRequest.State, new LyricsInput.Completed(firstRequest.State.Attempt,
     new LyricsResult.Failed("permanent", Transient:false))).Command is null, "don't retry permanent failure");
 var wrongVersion = new LrclibResponse { TrackName = "Song", ArtistName = "Artist", Duration = 240, SyncedLyrics = "[00:01.00]wrong version" };

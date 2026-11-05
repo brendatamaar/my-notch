@@ -53,8 +53,11 @@ public static class LyricsLookup
     };
     public static TimeSpan? RetryDelay(LyricsResult result, int retries)
     {
-        if (retries >= 2 || result is not (LyricsResult.Missing or LyricsResult.Failed { Transient: true })) return null;
-        var delay = TimeSpan.FromSeconds(retries == 0 ? 2 : 8);
+        if (result is not (LyricsResult.Missing or LyricsResult.Failed { Transient: true })) return null;
+        // A missing track is retried a few times (catalogue may lag or metadata settle); a transient
+        // failure (offline, 5xx, rate limit) keeps retrying with a capped backoff until a song change cancels it.
+        if (result is LyricsResult.Missing && retries >= 4) return null;
+        var delay = TimeSpan.FromSeconds(retries switch { 0 => 2, 1 => 8, 2 => 15, 3 => 30, _ => 60 });
         return result is LyricsResult.Failed { RetryAfter: { } after } && after > delay ? after : delay;
     }
     public static LyricsState Run(LyricsState initial, IEnumerable<LyricsInput> inputs) =>

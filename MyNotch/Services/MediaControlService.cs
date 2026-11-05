@@ -214,6 +214,19 @@ public sealed class MediaControlService : IDisposable
         }
     }
 
+    /// <summary>Fresh position report for the current session, or null when unavailable. Cheap; used to correct drift.</summary>
+    public MediaTimeline? ReadCurrentTimeline()
+    {
+        var session = _session;
+        if (session is null || _disposed) return null;
+        try { return ReadTimeline(session); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MyNotch] SMTC timeline read failed: {ex.Message}");
+            return null;
+        }
+    }
+
     // Seek / pause / rate changes. Cheap: no thumbnail or property reads.
     private void OnTimelineChanged(GlobalSystemMediaTransportControlsSession sender, object args)
     {
