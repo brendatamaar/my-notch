@@ -300,37 +300,63 @@ internal sealed class PulseAnimator
     }
 }
 
-/// <summary>Oyenza-style idle eyes: a brief blink every 5.5 seconds, entirely on the compositor.</summary>
+/// <summary>
+/// Oyenza-style idle eyes: a brief blink every 5.5 seconds. The eyes are the default (idle) glance, so this is
+/// what the notch shows most of the time. A looping 5.5 s keyframe animation would keep the compositor rendering
+/// every frame for a blink that lasts 140 ms; instead a timer fires a one-shot blink, and between blinks nothing
+/// on the notch animates.
+/// </summary>
 internal sealed class IdleEyeAnimator
 {
+    private const float BlinkMs = 140f;
     private readonly UIElement _eyes;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _timer;
+    private ScalarKeyFrameAnimation? _blink;
     private bool _running;
-    internal IdleEyeAnimator(UIElement eyes) => _eyes = eyes;
+
+    internal IdleEyeAnimator(UIElement eyes)
+    {
+        _eyes = eyes;
+        _timer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _timer.Interval = TimeSpan.FromMilliseconds(5500);
+        _timer.IsRepeating = true;
+        _timer.Tick += (_, _) => Blink();
+    }
+
     internal void Start()
     {
         if (_running) return;
         _running = true;
-        var visual = ElementCompositionPreview.GetElementVisual(_eyes);
-        visual.CenterPoint = new Vector3(14.25f, 5.5f, 0f);
-        var compositor = visual.Compositor;
-        var blink = compositor.CreateScalarKeyFrameAnimation();
-        var linear = compositor.CreateLinearEasingFunction();
-        blink.InsertKeyFrame(0f, 1f);
-        blink.InsertKeyFrame(5360f / 5500f, 1f, linear);
-        blink.InsertKeyFrame(5420f / 5500f, 2.5f / 11f, linear);
-        blink.InsertKeyFrame(5450f / 5500f, 2.5f / 11f, linear);
-        blink.InsertKeyFrame(1f, 1f, linear);
-        blink.Duration = TimeSpan.FromMilliseconds(5500);
-        blink.IterationBehavior = AnimationIterationBehavior.Forever;
-        visual.StartAnimation("Scale.Y", blink);
+        _timer.Start();
     }
+
     internal void Stop()
     {
         if (!_running) return;
         _running = false;
+        _timer.Stop();
         var visual = ElementCompositionPreview.GetElementVisual(_eyes);
         visual.StopAnimation("Scale.Y");
         visual.Scale = Vector3.One;
+    }
+
+    private void Blink()
+    {
+        if (!_running) return;
+        var visual = ElementCompositionPreview.GetElementVisual(_eyes);
+        if (_blink is null)
+        {
+            visual.CenterPoint = new Vector3(14.25f, 5.5f, 0f);
+            var compositor = visual.Compositor;
+            var linear = compositor.CreateLinearEasingFunction();
+            _blink = compositor.CreateScalarKeyFrameAnimation();
+            _blink.InsertKeyFrame(0f, 1f);
+            _blink.InsertKeyFrame(60f / BlinkMs, 2.5f / 11f, linear);
+            _blink.InsertKeyFrame(90f / BlinkMs, 2.5f / 11f, linear);
+            _blink.InsertKeyFrame(1f, 1f, linear);
+            _blink.Duration = TimeSpan.FromMilliseconds(BlinkMs);
+        }
+        visual.StartAnimation("Scale.Y", _blink);
     }
 }
 

@@ -93,8 +93,13 @@ public sealed partial class MainWindow
         if (target is null || (WindowHelper.TargetDisplay is { } current && current.Value == target.Value.Value)) return;
         WindowHelper.TargetDisplay = target;
         WindowHelper.Resize(this, _windowDip);
+        WindowHelper.ClipToStage(this, _windowDip, _stageDip);
         // A DPI change on the new monitor can resize the window after the move; settle once more.
-        _dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => WindowHelper.Resize(this, _windowDip));
+        _dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            WindowHelper.Resize(this, _windowDip);
+            WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+        });
         _displayWatcher.Evaluate();
     }
 
@@ -116,9 +121,16 @@ public sealed partial class MainWindow
         if (hide)
         {
             Collapse();
+            // Nothing is visible: stop the looping glance animations (the music bars would otherwise keep the
+            // compositor busy for the whole fullscreen video).
+            _beat.Stop(); _eyes.Stop(); _pulse.Stop();
             WindowHelper.Hide(this);
         }
-        else WindowHelper.ShowWithoutActivating(this);
+        else
+        {
+            WindowHelper.ShowWithoutActivating(this);
+            RefreshGlance(); // restarts whichever animation the current glance uses
+        }
     }
 
     /// <summary>An explicit open (tray, second launch, hotkey) wins over fullscreen hiding until the fullscreen app ends.</summary>

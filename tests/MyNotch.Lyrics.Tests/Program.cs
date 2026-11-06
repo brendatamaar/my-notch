@@ -423,6 +423,27 @@ var cancellingFake=new FakeUsageReader();
 var cancellingService=new AgentUsageService(cancellingFake,()=>usageNow);
 var cancelledRefresh=cancellingService.RefreshAsync();cancellingService.Dispose();await cancelledRefresh;
 Check(cancellingFake.Cancelled==4,"shutdown cancels all pending providers");
+using(var throwingService=new AgentUsageService(new ThrowingUsageReader(),()=>usageNow))
+{
+    await throwingService.RefreshAsync();
+    Check(Enum.GetValues<UsageProvider>().All(p=>throwingService.GetState(p).Content is UsageContent.Failed),"an unexpected reader exception fails the load instead of leaving it Loading forever");
+}
+{
+    string stampDir=Path.Combine(Path.GetTempPath(),"mynotch-agy-"+Guid.NewGuid());Directory.CreateDirectory(stampDir);
+    try
+    {
+        string stamp=Path.Combine(stampDir,"last_check.timestamp");var t0=new DateTime(2026,11,6,12,0,0,DateTimeKind.Utc);
+        AgentUsageReader.DeferAgyUpdateCheck(stamp,t0);
+        Check(!File.Exists(stamp),"agy stamp never created when agy has none");
+        File.WriteAllBytes(stamp,[]);File.SetLastWriteTimeUtc(stamp,t0.AddHours(-3));
+        AgentUsageReader.DeferAgyUpdateCheck(stamp,t0);
+        Check(File.GetLastWriteTimeUtc(stamp)==t0.AddMinutes(-14) && new FileInfo(stamp).Length==0,"stale agy stamp backdated to 14 minutes, content untouched");
+        File.SetLastWriteTimeUtc(stamp,t0.AddMinutes(-2));
+        AgentUsageReader.DeferAgyUpdateCheck(stamp,t0);
+        Check(File.GetLastWriteTimeUtc(stamp)==t0.AddMinutes(-2),"a recent agy check is left alone");
+    }
+    finally{try{Directory.Delete(stampDir,true);}catch(IOException){}}
+}
 Console.WriteLine($"PASS: four usage schemas, no-data/errors, cooldown/single-flight/cancellation and {usagePaths} lifecycle sequences");
 var leapCalendar = CalendarMonth.Cells(new DateOnly(2024,2,1));
 Check(leapCalendar.Count==42 && leapCalendar[0]!.Value.DayOfWeek==DayOfWeek.Monday,"calendar has six Monday-first weeks");
@@ -583,4 +604,9 @@ sealed class FakeHandler(Func<int, HttpRequestMessage, HttpResponseMessage> resp
         cancellationToken.ThrowIfCancellationRequested(); Urls.Add(request.RequestUri!.ToString());
         return Task.FromResult(respond(Calls++, request));
     }
+}
+
+sealed class ThrowingUsageReader : IAgentUsageReader
+{
+    public Task<UsageOutcome> ReadAsync(UsageProvider provider, CancellationToken cancellationToken) => throw new InvalidOperationException("unexpected");
 }

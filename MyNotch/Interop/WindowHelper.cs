@@ -83,6 +83,24 @@ internal static class WindowHelper
         CenterOnTop(window, appWindow, sizeDip);
     }
 
+    /// <summary>
+    /// Clips the (fixed-size) window to a top-centred <paramref name="stageDip"/> rectangle. Outside it the window
+    /// neither draws nor takes the pointer, so clicks fall through to whatever is underneath. Changing the region
+    /// never resizes or moves the window, so the XAML content can't jump for a frame the way a resize does.
+    /// </summary>
+    internal static void ClipToStage(Window window, SizeInt32 windowDip, SizeInt32 stageDip)
+    {
+        var hwnd = GetHwnd(window);
+        var win = ToPixels(hwnd, windowDip);
+        var stage = ToPixels(hwnd, stageDip);
+        int width = Math.Min(stage.Width, win.Width);
+        int left = (win.Width - width) / 2;
+        int bottom = Math.Min(stage.Height, win.Height);
+        var region = NativeMethods.CreateRectRgn(left, 0, left + width, bottom);
+        if (region == IntPtr.Zero) return;
+        if (NativeMethods.SetWindowRgn(hwnd, region, true) == 0) _ = NativeMethods.DeleteObject(region);
+    }
+
     private static SizeInt32 ToPixels(IntPtr hwnd, SizeInt32 dip) => Scale(dip, NativeMethods.GetDpiForWindow(hwnd));
 
     private static SizeInt32 Scale(SizeInt32 dip, uint dpi)

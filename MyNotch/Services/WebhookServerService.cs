@@ -160,6 +160,14 @@ public sealed class WebhookServerService : IDisposable
             System.Diagnostics.Debug.WriteLine($"[MyNotch] Webhook request failed: {ex.Message}");
             try { context.Response.Abort(); } catch { }
         }
+        catch (Exception ex)
+        {
+            // A subscriber or an odd-but-valid JSON shape threw. Answer anyway: an unanswered request leaves the
+            // hook's curl hanging (up to 10 minutes for a permission prompt) and the task's exception unobserved.
+            System.Diagnostics.Debug.WriteLine($"[MyNotch] Webhook handler failed: {ex}");
+            try { await RespondAsync(context, 500, "{\"error\":\"internal\"}").ConfigureAwait(false); }
+            catch { try { context.Response.Abort(); } catch { } }
+        }
     }
 
     private async Task HandleAgentAsync(HttpListenerContext context, byte[] body)

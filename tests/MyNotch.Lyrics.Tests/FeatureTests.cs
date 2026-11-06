@@ -70,6 +70,18 @@ internal static class FeatureTests
             lock (ended) Check(ended.Count == 1 && end.Status == 202, "session end raised");
         }
         finally { await server.StopAsync(); }
+
+        // A subscriber that throws must still get the client an answer, not a hung connection.
+        var throwing = new WebhookServerService(port);
+        throwing.PayloadReceived += (_, _) => throw new InvalidOperationException("subscriber failed");
+        await throwing.StartAsync();
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var response = await http.PostAsync($"http://127.0.0.1:{port}/agent", new StringContent("""{"agent":"build","status":"done","message":"ok"}"""));
+            Check((int)response.StatusCode == 500, "throwing subscriber answered with 500 instead of hanging");
+        }
+        finally { await throwing.StopAsync(); }
         Console.WriteLine("PASS: webhook HTTP: /claude/permission allow/deny/no-decision, /claude/hook mapping with empty stdout, session end, sender PID lookup, Origin rejection, legacy /agent");
     }
 

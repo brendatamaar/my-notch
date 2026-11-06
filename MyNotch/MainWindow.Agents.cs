@@ -65,7 +65,10 @@ public sealed partial class MainWindow
         if (!settings.NotchApprovals) return ApprovalDecision.None;
         var pending = new PendingApproval(request, new TaskCompletionSource<ApprovalDecision>(TaskCreationOptions.RunContinuationsAsynchronously));
         if (!_dispatcher.TryEnqueue(() => EnqueueApproval(pending))) return ApprovalDecision.None;
-        var finished = await Task.WhenAny(pending.Decision.Task, Task.Delay(TimeSpan.FromSeconds(settings.ApprovalWaitSeconds))).ConfigureAwait(false);
+        // Cancel the wait once the user decides, so each prompt doesn't leave a timer running for the full wait.
+        using var wait = new CancellationTokenSource();
+        var finished = await Task.WhenAny(pending.Decision.Task, Task.Delay(TimeSpan.FromSeconds(settings.ApprovalWaitSeconds), wait.Token)).ConfigureAwait(false);
+        wait.Cancel();
         if (finished != pending.Decision.Task && pending.Decision.TrySetResult(ApprovalDecision.None))
             _dispatcher.TryEnqueue(() => RemoveApproval(pending));
         return await pending.Decision.Task.ConfigureAwait(false);

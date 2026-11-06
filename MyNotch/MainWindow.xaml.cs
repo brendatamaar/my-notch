@@ -21,8 +21,11 @@ public sealed partial class MainWindow : Window
 {
     // All sizes are device-independent pixels; WindowHelper scales them for the display's DPI.
     // The notch joins the screen edge at y=0 with concave shoulders, and
-    // WindowPad of room around it for the shadow and the hover swell. The window hugs the shape plus that room.
+    // WindowPad of room around it for the shadow and the hover swell. The window stays at a fixed size that fits
+    // every shape and is clipped (window region) to the current shape plus that room: resizing a window while
+    // it's on screen makes its content jump for a frame, which showed as a flicker on hover.
     private static readonly SizeInt32 ExpandedShape = new(600, 200);
+    private static readonly SizeInt32 LargestShape = new(600, 340);
     // Usage fits its own cards; compact pages must not inherit this height.
     private const int UsagePanelMinimumHeight = 200;
     private int _usagePanelHeight = UsagePanelMinimumHeight;
@@ -95,7 +98,8 @@ public sealed partial class MainWindow : Window
     // Glance (closed look) and the shape the island is morphing to.
     private GlanceKind _shownKind = GlanceKind.Clock;
     private SizeInt32 _shape;      // target shape of the island, in DIPs
-    private SizeInt32 _windowDip;  // current window size, in DIPs (never smaller than the shape's stage)
+    private SizeInt32 _windowDip;  // window size in DIPs: fixed, grows only if a shape outgrows it
+    private SizeInt32 _stageDip;   // visible (clipped) part of the window, in DIPs (never smaller than the shape's stage)
     private GlanceState _glance = new(GlanceKind.Clock, string.Empty);
     private string? _noticeText;
     private DateTimeOffset _noticeUntil;
@@ -124,7 +128,7 @@ public sealed partial class MainWindow : Window
         _beat = new BeatAnimator(Bar1, Bar2, Bar3);
         _eyes = new IdleEyeAnimator(IdleEyes);
         _pulse = new PulseAnimator(GlanceDot);
-        _island = new IslandVisuals(Pill, ShadowHost, RimHost, LeftShoulder, RightShoulder, new Vector2(800, 560), StageFor(GlanceSizeFor(GlanceKind.Clock)).Width);
+        _island = new IslandVisuals(Pill, ShadowHost, RimHost, LeftShoulder, RightShoulder, new Vector2(800, 560), StageFor(LargestShape).Width);
 
         _hoverTimer = CreateOneShot(OnHoverTick);
         _glanceTimer = CreateOneShot(RefreshGlance);
@@ -168,8 +172,10 @@ public sealed partial class MainWindow : Window
         _lyricResyncTimer.Tick += (_, _) => { ResyncTimeline(); UpdateLyricState(); };
 
         _shape = GlanceSizeFor(GlanceKind.Clock);
-        _windowDip = StageFor(_shape);
+        _windowDip = StageFor(LargestShape);
+        _stageDip = StageFor(_shape);
         WindowHelper.ConfigureNotchShell(this, _windowDip);
+        WindowHelper.ClipToStage(this, _windowDip, _stageDip);
         _island.Snap(new Vector2(_shape.Width, _shape.Height), 14f);
         GlanceHost.Width = _shape.Width;
         GlanceHost.Height = _shape.Height;
@@ -953,7 +959,7 @@ public sealed partial class MainWindow : Window
             GlanceVolumeMinus.Glyph = notice.Level == 0 ? "" : ""; // Mute : Remove (minus)
         }
         IdleEyes.Visibility = isClock ? Visibility.Visible : Visibility.Collapsed;
-        if (isClock) _eyes.Start(); else _eyes.Stop();
+        if (isClock && !_hiddenForFullscreen) _eyes.Start(); else _eyes.Stop();
         GlanceText.FontSize = isLyric ? 12.5 : 11.5;
         GlanceText.MaxLines = isLyric || g.Kind == GlanceKind.Notice ? 2 : 1;
         GlanceText.TextWrapping = isLyric || g.Kind == GlanceKind.Notice ? TextWrapping.Wrap : TextWrapping.NoWrap;
@@ -978,10 +984,10 @@ public sealed partial class MainWindow : Window
         GlanceNoticeLevel.Visibility = notice?.Level is not null && !isVolume ? Visibility.Visible : Visibility.Collapsed;
         GlanceNoticeLevel.Value = _notifications.Current?.Level ?? 0;
         GlanceDot.Fill = g.Kind == GlanceKind.Agent ? UiBrushes.ForStatus(g.Agent) : UiBrushes.Accent;
-        if (awaiting) _pulse.Start(); else _pulse.Stop();
+        if (awaiting && !_hiddenForFullscreen) _pulse.Start(); else _pulse.Stop();
 
         GlanceBars.Visibility = isMusic ? Visibility.Visible : Visibility.Collapsed;
-        if (isMusic && Media.IsPlaying) _beat.Start(); else _beat.Stop();
+        if (isMusic && Media.IsPlaying && !_hiddenForFullscreen) _beat.Start(); else _beat.Stop();
 
         if (isFocus)
         {
@@ -1010,8 +1016,9 @@ public sealed partial class MainWindow : Window
         (int)Math.Ceiling(FloatGap + shape.Height + WindowPad));
 
     /// <summary>
-    /// Morphs the island to a new shape. The window only ever hugs the shape plus its padding: it grows
-    /// first (so the spring has room to run) and shrinks after the spring settles.
+    /// Morphs the island to a new shape. The visible stage only ever hugs the shape plus its padding: it grows
+    /// first (so the spring has room to run) and shrinks after the spring settles. The window itself only
+    /// resizes in the rare case a shape is taller than <see cref="LargestShape"/>.
     /// </summary>
     private void ApplyShape(SizeInt32 shape, float radius)
     {
@@ -1019,11 +1026,16 @@ public sealed partial class MainWindow : Window
         _peeking = false;
 
         var need = StageFor(shape);
-        var grown = new SizeInt32(Math.Max(_windowDip.Width, need.Width), Math.Max(_windowDip.Height, need.Height));
-        if (grown.Width != _windowDip.Width || grown.Height != _windowDip.Height)
+        if (need.Width > _windowDip.Width || need.Height > _windowDip.Height)
         {
-            _windowDip = grown;
-            WindowHelper.Resize(this, grown);
+            _windowDip = new SizeInt32(Math.Max(_windowDip.Width, need.Width), Math.Max(_windowDip.Height, need.Height));
+            WindowHelper.Resize(this, _windowDip);
+        }
+        var grown = new SizeInt32(Math.Max(_stageDip.Width, need.Width), Math.Max(_stageDip.Height, need.Height));
+        if (grown.Width != _stageDip.Width || grown.Height != _stageDip.Height)
+        {
+            _stageDip = grown;
+            WindowHelper.ClipToStage(this, _windowDip, _stageDip);
         }
 
         _island.MorphTo(new Vector2(shape.Width, shape.Height), radius);
@@ -1036,9 +1048,9 @@ public sealed partial class MainWindow : Window
     private void OnShapeSettled()
     {
         var need = StageFor(_shape);
-        if (need.Width == _windowDip.Width && need.Height == _windowDip.Height) return;
-        _windowDip = need;
-        WindowHelper.Resize(this, need);
+        if (need.Width == _stageDip.Width && need.Height == _stageDip.Height) return;
+        _stageDip = need;
+        WindowHelper.ClipToStage(this, _windowDip, _stageDip);
     }
 
     // The closed capsule swells a little when the pointer arrives, a beat before it opens (and relaxes if it leaves).

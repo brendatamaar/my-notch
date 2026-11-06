@@ -35,6 +35,12 @@ public sealed class AgentUsageService : IDisposable
         try { result = await _reader.ReadAsync(provider, _shutdown.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { return; }
         catch (ObjectDisposedException) when (_shutdown.IsCancellationRequested) { return; }
+        // Any other failure must still complete the load: a provider left in Loading is never refreshed again.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MyNotch] Usage read failed for {provider}: {ex}");
+            result = new(null, UsageProblem.Offline);
+        }
         lock (_gate)
         {
             if (_disposed) return;

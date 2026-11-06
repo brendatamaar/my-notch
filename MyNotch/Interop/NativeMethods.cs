@@ -98,4 +98,11 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [LibraryImport("gdi32.dll")]
+    internal static partial IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    /// <summary>On success the system owns <paramref name="hRgn"/>; on failure the caller must delete it.</summary>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
 }

@@ -49,6 +49,8 @@ public sealed class AgentUsageReader : IAgentUsageReader, IUsageResetter, IDispo
         catch (Win32Exception) { return new(null, UsageProblem.NotInstalled); }
         catch (HttpRequestException) { return new(null, UsageProblem.Offline); }
         catch (IOException) { return new(null, UsageProblem.InvalidData); }
+        // Oversize or missing CLI replies. Not an IOException, so it needs its own catch.
+        catch (InvalidDataException) { return new(null, UsageProblem.InvalidData); }
     }
 
     private async Task<UsageOutcome> ClaudeAsync(CancellationToken ct)
@@ -113,7 +115,7 @@ public sealed class AgentUsageReader : IAgentUsageReader, IUsageResetter, IDispo
             journal.Record(credit.Id, outcome);
             return outcome;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException or JsonException or Win32Exception)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException or JsonException or Win32Exception)
         {
             return UsageResetOutcome.Unknown;
         }
@@ -164,6 +166,7 @@ public sealed class AgentUsageReader : IAgentUsageReader, IUsageResetter, IDispo
         var versionReply = await RunAsync(executable, ["--version"], ct).ConfigureAwait(false);
         var match = Regex.Match(versionReply.Output, @"\b(\d+\.\d+\.\d+)\b", RegexOptions.CultureInvariant);
         if (versionReply.ExitCode != 0 || !match.Success || !Version.TryParse(match.Groups[1].Value, out var version) || version < new Version(1, 1, 11)) return new(null, UsageProblem.Unsupported);
+        DeferAgyUpdateCheck(AgyUpdateStamp, DateTime.UtcNow);
         var reply = await RunAsync(executable, ["-p", "/usage", "--output-format", "json"], ct).ConfigureAwait(false);
         if (reply.ExitCode != 0) return new(null, ClassifyCliFailure(reply.Output + " " + reply.Error));
         foreach (string line in reply.Output.Split('\n').Reverse())
@@ -230,7 +233,27 @@ public sealed class AgentUsageReader : IAgentUsageReader, IUsageResetter, IDispo
         }
         finally { Kill(process); await IgnoreDrainAsync(stdout).ConfigureAwait(false); await IgnoreDrainAsync(stderr).ConfigureAwait(false); }
     }
-    private static void Kill(Process process) { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
+
+    /// <summary>
+    /// agy runs a background update check whenever its last one (the mtime of last_check.timestamp) is more than
+    /// 15 minutes old. That updater is a detached process whose `agy --version` child gets a brand-new console,
+    /// and Windows 11 hands every new console to Windows Terminal: a terminal window flashes on screen. Our hidden
+    /// console can't cover it. Backdating the stamp to 14 minutes ago makes this one read take agy's "checked
+    /// recently" fast path, while any agy run of the user's own a minute later still checks for updates normally.
+    /// Only the file's timestamp is touched, and only when agy has created it.
+    /// </summary>
+    internal static void DeferAgyUpdateCheck(string stampPath, DateTime utcNow)
+    {
+        try
+        {
+            var stamp = new FileInfo(stampPath);
+            var recent = utcNow - TimeSpan.FromMinutes(14);
+            if (stamp.Exists && stamp.LastWriteTimeUtc < recent) File.SetLastWriteTimeUtc(stampPath, recent);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+    private static string AgyUpdateStamp => Path.Combine(Profile, ".gemini", "antigravity-cli", "last_check.timestamp");
+    private static void Kill(Process process) { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or Win32Exception) { } }
     private static async Task IgnoreDrainAsync(Task task) { try { await task.ConfigureAwait(false); } catch (OperationCanceledException) { } catch (IOException) { } }
     private static async Task<string> ReadSmallFileAsync(string path, CancellationToken ct)
     {

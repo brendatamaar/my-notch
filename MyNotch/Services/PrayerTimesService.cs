@@ -69,12 +69,13 @@ public sealed class PrayerTimesService : IDisposable
                 var tomorrow = await FetchAsync(place, now.Date.AddDays(1));
                 next = ("Fajr", now.Date.AddDays(1) + tomorrow.Fajr.ToTimeSpan());
             }
+            var machineTime = place.ToMachineTime(next.At); // can throw; keep it inside the try, off the UI thread
             _dispatcher.TryEnqueue(() =>
             {
                 if (_disposed || version != _generation) return;
                 Today = day; _todayDate = now.Date;
                 NextPrayerName = next.Name; NextCityTime = next.At;
-                NextPrayerTime = place.ToMachineTime(next.At);
+                NextPrayerTime = machineTime;
                 Status = "Kemenag method | Aladhan";
                 _timer ??= CreateTimer();
                 var delay = NextPrayerTime.Value - DateTime.Now;
@@ -85,7 +86,9 @@ public sealed class PrayerTimesService : IDisposable
                 ScheduleChanged?.Invoke(this, EventArgs.Empty);
             });
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        // Any failure (network, bad data, a DST-gap time conversion) must clear _loading and arm the retry,
+        // or RefreshIfStaleAsync would never refresh again for the rest of the session.
+        catch (Exception ex)
         {
             _dispatcher.TryEnqueue(() =>
             {
