@@ -55,7 +55,7 @@ public sealed class MediaControlService : IDisposable
     }
 
     public Task PlayPauseAsync() =>
-        ControlAsync(static s => s.TryTogglePlayPauseAsync());
+        ControlAsync(static s => s.TryTogglePlayPauseAsync(), refreshArtwork: false);
 
     public Task NextAsync() =>
         ControlAsync(static s => s.TrySkipNextAsync());
@@ -287,7 +287,7 @@ public sealed class MediaControlService : IDisposable
         return null;
     }
 
-    private async Task ControlAsync(Func<GlobalSystemMediaTransportControlsSession, IAsyncOperation<bool>> op)
+    private async Task ControlAsync(Func<GlobalSystemMediaTransportControlsSession, IAsyncOperation<bool>> op, bool refreshArtwork = true)
     {
         var session = _session;
         if (session is null) return;
@@ -307,19 +307,19 @@ public sealed class MediaControlService : IDisposable
             _transportResync?.Cancel();
             _transportResync?.Dispose();
             _transportResync = new CancellationTokenSource();
-            _ = ResyncAfterTransportAsync(session, _transportResync.Token);
+            _ = ResyncAfterTransportAsync(session, refreshArtwork, _transportResync.Token);
         }
-        await RefreshAsync(refreshArtwork: true).ConfigureAwait(false);
+        await RefreshAsync(refreshArtwork).ConfigureAwait(false);
     }
 
-    private async Task ResyncAfterTransportAsync(GlobalSystemMediaTransportControlsSession session, CancellationToken ct)
+    private async Task ResyncAfterTransportAsync(GlobalSystemMediaTransportControlsSession session, bool refreshArtwork, CancellationToken ct)
     {
         try
         {
             // Like Oyenza, re-read the actual player state after its transition settles.
             await Task.Delay(TimeSpan.FromMilliseconds(1200), ct).ConfigureAwait(false);
             if (ct.IsCancellationRequested || _disposed || !ReferenceEquals(session, _session)) return;
-            await RefreshAsync(refreshArtwork: true).ConfigureAwait(false);
+            await RefreshAsync(refreshArtwork).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
     }

@@ -721,7 +721,23 @@ public sealed partial class MainWindow : Window
         if (e.PropertyName == nameof(MediaViewModel.HasMedia) && ViewModel.SelectedTab == NotchTab.Music) SyncExpandedSize();
     }
 
-    private void MediaPlayPause_Click(object sender, RoutedEventArgs e) => _ = _media.PlayPauseAsync();
+    private void MediaPlayPause_Click(object sender, RoutedEventArgs e)
+    {
+        // Optimistic: flip the icon and freeze/resume the progress now instead of waiting
+        // for the player to accept the command and SMTC to report back. The real state
+        // from SMTC overwrites this a moment later (and corrects it if the player declined).
+        if (_lastTrack.HasSession)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var timeline = _lastTrack.Timeline with
+            {
+                Position = _lastTrack.Timeline.PositionNow(_lastTrack.IsPlaying),
+                ReportedAt = now,
+            };
+            ApplyTrack(_lastTrack with { IsPlaying = !_lastTrack.IsPlaying, Timeline = timeline });
+        }
+        _ = _media.PlayPauseAsync();
+    }
     private void MediaNext_Click(object sender, RoutedEventArgs e) => _ = _media.NextAsync();
     private void MediaPrevious_Click(object sender, RoutedEventArgs e) => _ = _media.PreviousAsync();
 
