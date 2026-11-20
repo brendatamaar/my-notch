@@ -1,0 +1,277 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create/update (e.g. v0.1.3). Leave empty to build workflow artifacts only.'
+        required: false
+        default: ''
+        type: string
+      prerelease:
+        description: 'Mark GitHub Release as a prerelease'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve release version metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $tag = $env:GITHUB_REF_NAME
+            $publishRelease = 'true'
+          } else {
+            $inputTag = "${{ inputs.tag }}".Trim()
+            if ($inputTag) {
+              $tag = $inputTag
+              $publishRelease = 'true'
+            } else {
+              $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+              $tag = "dev-$shortSha"
+              $publishRelease = 'false'
+            }
+          }
+
+          $cleanVersion = $tag -replace '^v', ''
+          if ($cleanVersion -match '^(\d+\.\d+\.\d+)') {
+            $appVersion = $Matches[1]
+          } else {
+            $appVersion = '0.0.0'
+          }
+
+          $isPrerelease = if ("${{ inputs.prerelease }}" -eq 'true' -or $cleanVersion -match '-') { 'true' } else { 'false' }
+
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "app_version=$appVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "publish_release=$publishRelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "is_prerelease=$isPrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+          Write-Host "Tag: $tag | AppVersion: $appVersion | PublishRelease: $publishRelease | Prerelease: $isPrerelease"
+
+      - name: Run regression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project tests/MyNotch.Lyrics.Tests/MyNotch.Lyrics.Tests.csproj
+
+      - name: Publish MyNotch (win-x64, self-contained)
+        shell: pwsh
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          APP_VERSION: ${{ steps.meta.outputs.app_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $appxDir = $null
+          if (Test-Path $vswhere) {
+            $vsPaths = & $vswhere -all -products * -property installationPath 2>$null
+            foreach ($vsPath in $vsPaths) {
+              if (-not $vsPath) { continue }
+              $candidate = Get-ChildItem -Path (Join-Path $vsPath 'MSBuild\Microsoft\VisualStudio') -Filter 'Microsoft.Build.AppxPackage.dll' -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+              if ($candidate) {
+                $appxDir = $candidate.DirectoryName
+                break
+              }
+            }
+          }
+
+          if (-not $appxDir) {
+            throw "Could not locate Visual Studio AppxPackage MSBuild tasks (Microsoft.Build.AppxPackage.dll)."
+          }
+
+          Write-Host "Using AppxMSBuildToolsPath: $appxDir"
+          $appxProp = "-p:AppxMSBuildToolsPath=$($appxDir.Replace('\', '/'))/"
+
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'publish\win-x64'
+          if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
+
+          # Publish non-AOT self-contained release (Native AOT currently crashes WinUI startup with 0xc0000374).
+          dotnet publish MyNotch/MyNotch.csproj `
+            -c Release `
+            -p:Platform=x64 `
+            -r win-x64 `
+            -p:PublishAot=false `
+            -p:PublishTrimmed=false `
+            -p:SelfContained=true `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:Version=$env:APP_VERSION `
+            -p:InformationalVersion=$env:TAG `
+            -o $publishDir `
+            $appxProp
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed with exit code $LASTEXITCODE"
+          }
+
+          # Ensure WinUI .pri and compiled .xbf files generated in the build output are present in publish output.
+          $buildDir = Join-Path $env:GITHUB_WORKSPACE 'MyNotch\bin\x64\Release\net8.0-windows10.0.19041.0\win-x64'
+          if (Test-Path $buildDir) {
+            $buildFull = (Resolve-Path $buildDir).Path
+            Get-ChildItem -Path $buildFull -Recurse -File | Where-Object { $_.Extension -in '.pri', '.xbf' } | ForEach-Object {
+              $relPath = $_.FullName.Substring($buildFull.Length).TrimStart('\', '/')
+              $destPath = Join-Path $publishDir $relPath
+              if (-not (Test-Path $destPath)) {
+                New-Item -ItemType Directory -Path (Split-Path $destPath -Parent) -Force | Out-Null
+                Copy-Item -LiteralPath $_.FullName -Destination $destPath -Force
+                Write-Host "Copied missing WinUI asset into publish output: $relPath"
+              }
+            }
+          }
+
+          # Validate required runtime and WinUI files are present.
+          $requiredFiles = @(
+            'MyNotch.exe',
+            'MyNotch.pri',
+            'Microsoft.UI.Xaml.dll',
+            'Setup-NotificationAccess.ps1',
+            'commands.example.json'
+          )
+          foreach ($file in $requiredFiles) {
+            $full = Join-Path $publishDir $file
+            if (-not (Test-Path $full)) {
+              throw "Published output is missing required file: $file"
+            }
+          }
+
+          $xbfCount = (Get-ChildItem -Path $publishDir -Recurse -Filter '*.xbf' -File).Count
+          if ($xbfCount -lt 1) {
+            throw "Published output contains no compiled .xbf XAML files."
+          }
+          Write-Host "Verified published layout ($xbfCount .xbf files present)."
+
+      - name: Package portable zip and Windows installer (.exe)
+        shell: pwsh
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          APP_VERSION: ${{ steps.meta.outputs.app_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'publish\win-x64'
+          $distDir = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+
+          # 1. Portable self-contained .zip
+          $zipName = "MyNotch-$($env:TAG)-win-x64.zip"
+          $zipPath = Join-Path $distDir $zipName
+          Compress-Archive -Path "$publishDir\*" -DestinationPath $zipPath -CompressionLevel Optimal -Force
+
+          # 2. Windows Installer (.exe) via Inno Setup 6
+          $iscc = @(
+            (Get-Command iscc -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source),
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+          if (-not $iscc) {
+            Write-Host "Inno Setup not found on runner; installing via Chocolatey..."
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler (ISCC.exe) could not be found."
+          }
+
+          & $iscc `
+            "/DMyAppVersion=$env:APP_VERSION" `
+            "/DMyAppTag=$env:TAG" `
+            "/DSourceDir=$publishDir" `
+            "/DOutputDir=$distDir" `
+            "installer\MyNotch.iss"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
+          }
+
+          # 3. Generate SHA256SUMS.txt
+          $checksumLines = Get-ChildItem -Path $distDir -File |
+            Where-Object { $_.Extension -in '.exe', '.zip' } |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            }
+          $checksumLines | Set-Content -Path (Join-Path $distDir 'SHA256SUMS.txt') -Encoding Ascii
+
+          Get-ChildItem -Path $distDir -File | Format-Table Name, Length -AutoSize
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyNotch-${{ steps.meta.outputs.tag }}-win-x64
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: steps.meta.outputs.publish_release == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          IS_PRERELEASE: ${{ steps.meta.outputs.is_prerelease }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $assets = Get-ChildItem -Path 'dist' -File | ForEach-Object { $_.FullName }
+          $installerName = "MyNotch-Setup-$($env:TAG)-win-x64.exe"
+          $zipName = "MyNotch-$($env:TAG)-win-x64.zip"
+
+          $notes = @"
+          ### Downloads (Windows x64 — self-contained, no .NET runtime required)
+
+          - **Installer:** ``$installerName`` — per-user installer to ``%LOCALAPPDATA%\Programs\MyNotch`` with Start Menu shortcut and optional Windows startup.
+          - **Portable:** ``$zipName`` — extract the entire folder and run ``MyNotch.exe``.
+
+          > **Note:** Release binaries are currently unsigned, so Windows SmartScreen may show a warning on first run (*More info → Run anyway*).
+          "@
+
+          $notesFile = Join-Path $env:TEMP 'release-notes.md'
+          $notes | Set-Content -Path $notesFile -Encoding utf8
+
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $env:TAG already exists; uploading assets with --clobber..."
+            gh release upload $env:TAG @assets --clobber
+          } else {
+            $createArgs = @('release', 'create', $env:TAG) + @($assets) + @(
+              '--target', $env:GITHUB_SHA,
+              '--title', "MyNotch $($env:TAG)",
+              '--notes-file', $notesFile,
+              '--generate-notes'
+            )
+            if ($env:IS_PRERELEASE -eq 'true') {
+              $createArgs += '--prerelease'
+            }
+            gh @createArgs
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to publish GitHub Release for $env:TAG"
+          }
