@@ -51,5 +51,24 @@ public sealed record MediaTimeline
         return pos;
     }
 
+    /// <summary>Max backward step a periodic resync may take while playing; larger jumps are seeks.</summary>
+    public static readonly TimeSpan MaxResyncRegression = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Merges a periodic re-read into the live timeline. Players often keep returning the
+    /// position of their last TimelinePropertiesChanged, so blindly adopting a slightly
+    /// older report drags the extrapolated position (and the lyric line) backwards every
+    /// few seconds. Small regressions while playing keep the extrapolation; a large jump
+    /// is a seek and is accepted, as is any report while paused. Direct seek/pause events
+    /// do not go through here and always apply immediately.
+    /// </summary>
+    public MediaTimeline Reconcile(MediaTimeline fresh, bool isPlaying)
+    {
+        if (!fresh.IsKnown && IsKnown) return this;
+        if (!isPlaying || !IsKnown || !fresh.IsKnown) return fresh;
+        var regression = PositionNow(true) - fresh.PositionNow(true);
+        return regression > TimeSpan.Zero && regression <= MaxResyncRegression ? this : fresh;
+    }
+
     public static MediaTimeline Empty { get; } = new();
 }

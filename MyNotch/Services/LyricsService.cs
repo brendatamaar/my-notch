@@ -18,7 +18,9 @@ public sealed class LyricsService : IDisposable
         _http.Timeout = TimeSpan.FromSeconds(12);
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("MyNotch/1.0");
     }
-    public async Task<LyricsResult> GetAsync(LyricsQuery query, CancellationToken ct)
+    /// <summary><paramref name="onPlainFallback"/> fires once, as soon as unsynced lyrics are
+    /// known, while the remaining editions are still being checked for a synced copy.</summary>
+    public async Task<LyricsResult> GetAsync(LyricsQuery query, CancellationToken ct, Action<LyricsResult>? onPlainFallback = null)
     {
         ct.ThrowIfCancellationRequested();
         query = query with { Title = LyricsMatching.CleanTitle(query.Title), Artist = query.Artist.Trim(),
@@ -45,13 +47,11 @@ public sealed class LyricsService : IDisposable
             var candidates = await SearchAsync($"https://lrclib.net/api/search?{search}", ct).ConfigureAwait(false);
             var found = LyricsMatching.Decode(LyricsMatching.Select(candidates, query), query.Duration);
             if (found is LyricsResult.Synced or LyricsResult.Instrumental) return Remember(query, found, ct);
-            if (found is LyricsResult.Plain) fallback = found;
-            // Free-text search tolerates artist/title spelling differences the structured search misses.
-            var freeText = Uri.EscapeDataString($"{LyricsMatching.PrimaryArtist(query.Artist)} {title}".Trim());
-            var looseCandidates = await SearchAsync($"https://lrclib.net/api/search?q={freeText}", ct).ConfigureAwait(false);
-            var loose = LyricsMatching.Decode(LyricsMatching.Select(looseCandidates, query), query.Duration);
-            if (loose is LyricsResult.Synced or LyricsResult.Instrumental) return Remember(query, loose, ct);
-            if (loose is LyricsResult.Plain && fallback is not LyricsResult.Plain) fallback = loose;
+            if (found is LyricsResult.Plain)
+            {
+                fallback = found;
+                onPlainFallback?.Invoke(found);
+            }
             var urls = new List<string>();
             var albumParameter = string.IsNullOrWhiteSpace(query.Album) ? string.Empty : $"&album_name={Uri.EscapeDataString(query.Album)}";
             if (query.Duration.TotalSeconds is >= 1 and <= 3600)
@@ -61,12 +61,39 @@ public sealed class LyricsService : IDisposable
                 urls.Add($"https://lrclib.net/api/get?{signature}{durationParameter}");
             }
             urls.Add($"https://lrclib.net/api/get?{signature}");
-            foreach (var url in urls)
+            // Remaining editions run concurrently and the first synced copy wins: running them
+            // one after another made every track switch wait for the sum of all of them.
+            var freeText = Uri.EscapeDataString($"{LyricsMatching.PrimaryArtist(query.Artist)} {title}".Trim());
+            var attempts = new List<Func<CancellationToken, Task<LyricsResult>>>
             {
-                var result = LyricsMatching.Decode(await FetchAsync(url, ct).ConfigureAwait(false), query.Duration);
-                if (result is LyricsResult.Synced or LyricsResult.Instrumental) return Remember(query, result, ct);
-                if (result is LyricsResult.Plain) fallback = result;
+                // Free-text search tolerates artist/title spelling differences the structured search misses.
+                async token => LyricsMatching.Decode(LyricsMatching.Select(
+                    await SearchAsync($"https://lrclib.net/api/search?q={freeText}", token).ConfigureAwait(false), query), query.Duration),
+            };
+            attempts.AddRange(urls.Select<string, Func<CancellationToken, Task<LyricsResult>>>(url =>
+                async token => LyricsMatching.Decode(await FetchAsync(url, token).ConfigureAwait(false), query.Duration)));
+            using var parallel = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var pending = attempts.Select(attempt => RunAttempt(attempt, parallel.Token, ct)).ToList();
+            Exception? firstError = null;
+            while (pending.Count > 0)
+            {
+                var done = await Task.WhenAny(pending).ConfigureAwait(false);
+                pending.Remove(done);
+                var (result, error) = await done.ConfigureAwait(false);
+                if (error is not null) { firstError ??= error; continue; }
+                if (result is LyricsResult.Synced or LyricsResult.Instrumental)
+                {
+                    parallel.Cancel();
+                    return Remember(query, result, ct);
+                }
+                if (result is LyricsResult.Plain && fallback is not LyricsResult.Plain)
+                {
+                    fallback = result;
+                    onPlainFallback?.Invoke(result);
+                }
             }
+            if (fallback is LyricsResult.Plain) return Remember(query, fallback, ct);
+            if (firstError is not null) throw firstError;
             return Remember(query, fallback, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -76,6 +103,14 @@ public sealed class LyricsService : IDisposable
             return fallback is LyricsResult.Plain ? Remember(query, fallback, ct)
                 : Failure("Unable to load lyrics right now.", IsTransient(ex));
         }
+    }
+    private static async Task<(LyricsResult? Result, Exception? Error)> RunAttempt(
+        Func<CancellationToken, Task<LyricsResult>> attempt, CancellationToken token, CancellationToken caller)
+    {
+        try { return (await attempt(token).ConfigureAwait(false), null); }
+        catch (OperationCanceledException) when (caller.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return (null, null); } // a sibling already found synced lyrics
+        catch (Exception ex) { return (null, ex); }
     }
     private LyricsResult Remember(LyricsQuery query, LyricsResult result, CancellationToken ct)
     {

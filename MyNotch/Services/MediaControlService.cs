@@ -242,7 +242,8 @@ public sealed class MediaControlService : IDisposable
         var rate = session.GetPlaybackInfo()?.PlaybackRate ?? 1.0;
         return new MediaTimeline
         {
-            Position = tl.Position,
+            // SMTC Position is measured from StartTime (non-zero for some players/streams).
+            Position = tl.Position > tl.StartTime ? tl.Position - tl.StartTime : TimeSpan.Zero,
             Duration = tl.EndTime - tl.StartTime,
             // Some players never stamp the report; treat that as "just now".
             ReportedAt = tl.LastUpdatedTime.Year < 2000 ? DateTimeOffset.UtcNow : tl.LastUpdatedTime,

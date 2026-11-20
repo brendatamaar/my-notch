@@ -105,6 +105,18 @@ using (var service = new LyricsService(handler)) {
     await service.GetAsync(query, default);
     Check(handler.Calls == 4, "plain lyrics available immediately on returning to a song");
 }
+{
+    var slow = new SlowFallbackHandler();
+    using var slowService = new LyricsService(slow);
+    LyricsResult? early = null; int earlyCalls = 0; bool returned = false; bool earlyBeforeReturn = false;
+    var watch = System.Diagnostics.Stopwatch.StartNew();
+    var slowResult = await slowService.GetAsync(query, default, plain => { early = plain; earlyCalls++; earlyBeforeReturn = !returned; });
+    returned = true; watch.Stop();
+    Check(slowResult is LyricsResult.Plain && slow.Calls == 4, "slow fallback still tries every synced edition");
+    Check(watch.ElapsedMilliseconds < 1000, $"fallback editions run in parallel, not sequentially (took {watch.ElapsedMilliseconds} ms)");
+    Check(early is LyricsResult.Plain { Text: "unsynced lyrics" } && earlyCalls == 1 && earlyBeforeReturn,
+        "plain lyrics surface as soon as found, once, before the synced search finishes");
+}
 handler = new FakeHandler((i, request) => new HttpResponseMessage(i == 0 ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) {
     Content = new StringContent("[" + Record("[00:01.00]recovered") + "]") });
 using (var service = new LyricsService(handler)) {
@@ -173,6 +185,29 @@ Check(LyricsMatching.Decode(new LrclibResponse {SyncedLyrics="[00:00.00] "}) is 
 Check(LrcParser.IndexAt(LrcParser.Parse("[00:10.00]first\n[00:20.00]second"), TimeSpan.FromSeconds(15)) == 0, "timeline selects current line");
 Check(LrcParser.Parse("[00:NaN]bad\n[00:Infinity]bad\n[00:60]bad\n[00:02.00]good").Count == 1,
     "invalid provider timestamps must be rejected without throwing");
+Check(LrcParser.Parse("[offset:+1500]\n[00:10.00]first")[0].Time == TimeSpan.FromSeconds(8.5),
+    "positive LRC offset moves lyrics earlier");
+Check(LrcParser.Parse("[offset:-500]\n[00:10.00]first")[0].Time == TimeSpan.FromSeconds(10.5),
+    "negative LRC offset moves lyrics later");
+Check(LrcParser.Parse("[offset:+999999]\n[00:01.00]first")[0].Time == TimeSpan.Zero,
+    "offset never produces a negative timestamp");
+Check(LrcParser.Parse("[offset:garbage]\n[00:10.00]first")[0].Time == TimeSpan.FromSeconds(10),
+    "malformed offset is ignored");
+// Periodic SMTC resync must not drag a good extrapolated position back to a stale report:
+// players often keep returning the position of their last TimelinePropertiesChanged.
+var tlNow = DateTimeOffset.UtcNow;
+var extrapolated = new MediaTimeline { Position = TimeSpan.FromSeconds(50), Duration = TimeSpan.FromSeconds(180), ReportedAt = tlNow };
+var staleReport = new MediaTimeline { Position = TimeSpan.FromSeconds(47), Duration = TimeSpan.FromSeconds(180), ReportedAt = tlNow };
+Check(Math.Abs(extrapolated.Reconcile(staleReport, isPlaying: true).PositionNow(true).TotalSeconds - 50) < 0.5,
+    "stale resync must not move the lyric position backwards");
+var seekReport = new MediaTimeline { Position = TimeSpan.FromSeconds(10), Duration = TimeSpan.FromSeconds(180), ReportedAt = tlNow };
+Check(Math.Abs(extrapolated.Reconcile(seekReport, isPlaying: true).PositionNow(true).TotalSeconds - 10) < 0.5,
+    "large resync jump is a seek and must be accepted");
+var pausedReport = new MediaTimeline { Position = TimeSpan.FromSeconds(47), Duration = TimeSpan.FromSeconds(180), ReportedAt = tlNow };
+Check(Math.Abs(extrapolated.Reconcile(pausedReport, isPlaying: false).PositionNow(false).TotalSeconds - 47) < 0.5,
+    "paused resync always accepts the player position");
+Check(ReferenceEquals(extrapolated, extrapolated.Reconcile(MediaTimeline.Empty, isPlaying: true)),
+    "unknown resync must not erase a known timeline");
 
 // Actual Apple Music Windows regression: artist and album are merged in SMTC metadata.
 const string apple = "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App";
@@ -598,11 +633,25 @@ sealed class FakeUsageReader : IAgentUsageReader
     public void Complete(UsageProvider provider,UsageOutcome outcome)=>_pending[provider].SetResult(outcome);
 }
 sealed class FakeHandler(Func<int, HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler {
+    private readonly object _gate = new();
     public int Calls {get; private set;}
     public List<string> Urls {get;} = [];
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested(); Urls.Add(request.RequestUri!.ToString());
-        return Task.FromResult(respond(Calls++, request));
+        lock (_gate) {
+            cancellationToken.ThrowIfCancellationRequested(); Urls.Add(request.RequestUri!.ToString());
+            return Task.FromResult(respond(Calls++, request));
+        }
+    }
+}
+
+sealed class SlowFallbackHandler : HttpMessageHandler {
+    private int _calls;
+    public int Calls => Volatile.Read(ref _calls);
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+        if (Interlocked.Increment(ref _calls) > 1) await Task.Delay(400, cancellationToken);
+        bool search = request.RequestUri!.AbsolutePath.EndsWith("search");
+        string record = "{\"trackName\":\"Song\",\"artistName\":\"Artist\",\"duration\":180,\"plainLyrics\":\"unsynced lyrics\"}";
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(search ? "[" + record + "]" : record) };
     }
 }
 

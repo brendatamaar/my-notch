@@ -607,7 +607,20 @@ public sealed partial class MainWindow : Window
         var ct = cancellation.Token;
         Media.SetLyricsAvailability(LyricsAvailability.Loading, "Finding lyrics...");
         LyricsResult result;
-        try { result = await _lyricsService.GetAsync(command.Query, ct); }
+        try
+        {
+            result = await _lyricsService.GetAsync(command.Query, ct, early =>
+            {
+                // Unsynced lyrics are already known; show them while synced editions are checked.
+                if (early is not LyricsResult.Plain plain) return;
+                _dispatcher.TryEnqueue(() =>
+                {
+                    if (ct.IsCancellationRequested || _lyricsState is not LyricsState.Loading
+                        || _lyricsState.Attempt != command.Attempt) return;
+                    Media.SetLyricsAvailability(LyricsAvailability.Plain, "Lyrics · not synced", plain.Text);
+                });
+            });
+        }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         var completed = LyricsLookup.Step(_lyricsState, new LyricsInput.Completed(command.Attempt, result));
         if (ReferenceEquals(completed.State, _lyricsState)) return;
@@ -644,8 +657,7 @@ public sealed partial class MainWindow : Window
     private void ResyncTimeline()
     {
         if (_media.ReadCurrentTimeline() is not { } fresh) return;
-        if (!fresh.IsKnown && _timeline.IsKnown) return;
-        _timeline = fresh;
+        _timeline = _timeline.Reconcile(fresh, _lastTrack.IsPlaying);
     }
 
     private async Task RetryLyricsAutomaticallyAsync(ScheduleLyricsRetry command, CancellationToken ct)

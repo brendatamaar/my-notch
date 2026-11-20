@@ -14,6 +14,7 @@ public static class LrcParser
         if (string.IsNullOrWhiteSpace(lrc)) return Array.Empty<LrcLine>();
 
         var lines = new List<LrcLine>();
+        var offset = ParseOffset(lrc);
         foreach (var raw in lrc.Split('\n'))
         {
             var line = raw.Trim();
@@ -30,11 +31,32 @@ public static class LrcParser
             if (stamps.Count == 0) continue;
 
             var text = line[pos..].Trim();
-            foreach (var t in stamps) lines.Add(new LrcLine(t, text));
+            foreach (var t in stamps)
+            {
+                // [offset:+ms] moves lyrics sooner, [offset:-ms] later; never before zero.
+                var shifted = t - offset;
+                lines.Add(new LrcLine(shifted < TimeSpan.Zero ? TimeSpan.Zero : shifted, text));
+            }
         }
 
         lines.Sort(static (a, b) => a.Time.CompareTo(b.Time));
         return lines;
+    }
+
+    /// <summary>Global "[offset:+/-ms]" tag, if present and well-formed.</summary>
+    private static TimeSpan ParseOffset(string lrc)
+    {
+        foreach (var raw in lrc.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (!line.StartsWith("[offset:", StringComparison.OrdinalIgnoreCase)) continue;
+            int close = line.IndexOf(']');
+            if (close < 0) continue;
+            return long.TryParse(line.AsSpan(8, close - 8).Trim(), NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture, out var ms)
+                ? TimeSpan.FromMilliseconds(ms) : TimeSpan.Zero;
+        }
+        return TimeSpan.Zero;
     }
 
     /// <summary>Index of the line being sung at <paramref name="position"/>, or -1 before the first line.</summary>
