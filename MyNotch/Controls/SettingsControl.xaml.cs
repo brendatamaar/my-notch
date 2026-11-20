@@ -14,10 +14,13 @@ public sealed partial class SettingsControl : UserControl
     private readonly List<Action> _refreshers = new();
 
     public event EventHandler? NotificationSettingsRequested;
+    public event EventHandler? CheckUpdateRequested;
+    public event EventHandler? InstallUpdateRequested;
 
     public SettingsControl()
     {
         InitializeComponent();
+        AddStepper(HoverDelayHost, "Hover delay (ms)", 100, 1000, 50, s => s.HoverDelayMs, (s, v) => s with { HoverDelayMs = v });
         AddStepper(FocusSteppers, "Focus", 1, 180, 5, s => s.FocusMinutes, (s, v) => s with { FocusMinutes = v });
         AddStepper(FocusSteppers, "Short break", 1, 60, 1, s => s.ShortBreakMinutes, (s, v) => s with { ShortBreakMinutes = v });
         AddStepper(FocusSteppers, "Long break", 1, 120, 5, s => s.LongBreakMinutes, (s, v) => s with { LongBreakMinutes = v });
@@ -39,6 +42,8 @@ public sealed partial class SettingsControl : UserControl
         StartupBox.IsChecked = startup == StartupState.On;
         StartupBox.Content = StartupRegistration.Describe(startup);
         FullscreenBox.IsChecked = s.HideInFullscreen;
+        HoverOpenBox.IsChecked = s.HoverToOpen;
+        HoverDelayHost.Visibility = s.HoverToOpen ? Visibility.Visible : Visibility.Collapsed;
         ApprovalsBox.IsChecked = s.NotchApprovals;
         ClipsBox.IsChecked = s.ClipboardHistory;
         CiBox.IsChecked = s.WatchCi;
@@ -64,11 +69,42 @@ public sealed partial class SettingsControl : UserControl
     }
 
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => Save(s => s with { HideInFullscreen = FullscreenBox.IsChecked == true });
+    private void HoverOpen_Click(object sender, RoutedEventArgs e) => Save(s => s with { HoverToOpen = HoverOpenBox.IsChecked == true });
     private void Approvals_Click(object sender, RoutedEventArgs e) => Save(s => s with { NotchApprovals = ApprovalsBox.IsChecked == true });
     private void Clips_Click(object sender, RoutedEventArgs e) => Save(s => s with { ClipboardHistory = ClipsBox.IsChecked == true });
     private void Ci_Click(object sender, RoutedEventArgs e) => Save(s => s with { WatchCi = CiBox.IsChecked == true });
     private void SaveFeed_Click(object sender, RoutedEventArgs e) => Save(s => s with { CalendarFeedUrl = FeedBox.Text.Trim() });
     private void Notifications_Click(object sender, RoutedEventArgs e) => NotificationSettingsRequested?.Invoke(this, EventArgs.Empty);
+    private void CheckUpdate_Click(object sender, RoutedEventArgs e) => CheckUpdateRequested?.Invoke(this, EventArgs.Empty);
+    private void InstallUpdate_Click(object sender, RoutedEventArgs e) => InstallUpdateRequested?.Invoke(this, EventArgs.Empty);
+
+    public void ApplyUpdateState(UpdateState state)
+    {
+        bool busy = state.Kind is UpdateStatusKind.Checking or UpdateStatusKind.Downloading or UpdateStatusKind.Installing;
+        bool hasRelease = state.Release is not null;
+
+        UpdateStatus.Text = state.Kind switch
+        {
+            UpdateStatusKind.Idle => $"Installed {state.CurrentVersion}",
+            UpdateStatusKind.Checking => $"Installed {state.CurrentVersion} · Checking GitHub...",
+            UpdateStatusKind.UpToDate => $"Up to date ({state.CurrentVersion})",
+            UpdateStatusKind.Available => $"Installed {state.CurrentVersion} · {state.Release!.Tag} ready",
+            UpdateStatusKind.Downloading => state.Message ?? $"Downloading {state.Release?.Tag}...",
+            UpdateStatusKind.Installing => state.Message ?? "Installing update...",
+            UpdateStatusKind.Error => $"{state.CurrentVersion} · {state.Message ?? "Update check failed."}",
+            _ => state.CurrentVersion,
+        };
+
+        InstallUpdateButton.Visibility = hasRelease ? Visibility.Visible : Visibility.Collapsed;
+        InstallUpdateButton.Content = state.Kind switch
+        {
+            UpdateStatusKind.Downloading => state.ProgressPercent is { } p ? $"Downloading {p:0}%" : "Downloading...",
+            UpdateStatusKind.Installing => "Installing...",
+            _ => hasRelease ? $"Update to {state.Release!.Tag}" : "Update",
+        };
+        InstallUpdateButton.IsEnabled = hasRelease && !busy;
+        CheckUpdateButton.IsEnabled = !busy;
+    }
 
     private async void OpenFolder_Click(object sender, RoutedEventArgs e)
     {

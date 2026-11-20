@@ -6,15 +6,20 @@ $identityRoot = Join-Path $appRoot 'NotificationIdentity'
 $assets = Join-Path $identityRoot 'Assets'
 New-Item -ItemType Directory -Path $assets -Force | Out-Null
 # A local development identity provides the Windows capability; no certificate or OS setting is changed.
-Add-Type -AssemblyName System.Drawing
-$bitmap = New-Object System.Drawing.Bitmap 150,150
-$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-try {
-    $graphics.Clear([System.Drawing.Color]::Black)
-    $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(240,137,46)),9
-    try { $graphics.DrawEllipse($pen,35,30,80,80); $graphics.DrawLine($pen,50,115,100,115) } finally { $pen.Dispose() }
-    $bitmap.Save((Join-Path $assets 'Logo.png'),[System.Drawing.Imaging.ImageFormat]::Png)
-} finally { $graphics.Dispose(); $bitmap.Dispose() }
+$bundledLogo = Join-Path $appRoot 'Assets\MyNotch.png'
+if (Test-Path -LiteralPath $bundledLogo) {
+    Copy-Item -LiteralPath $bundledLogo -Destination (Join-Path $assets 'Logo.png') -Force
+} else {
+    Add-Type -AssemblyName System.Drawing
+    $bitmap = New-Object System.Drawing.Bitmap 150,150
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.Clear([System.Drawing.Color]::Black)
+        $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(240,137,46)),9
+        try { $graphics.DrawEllipse($pen,35,30,80,80); $graphics.DrawLine($pen,50,115,100,115) } finally { $pen.Dispose() }
+        $bitmap.Save((Join-Path $assets 'Logo.png'),[System.Drawing.Imaging.ImageFormat]::Png)
+    } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
 $manifest = @'
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"

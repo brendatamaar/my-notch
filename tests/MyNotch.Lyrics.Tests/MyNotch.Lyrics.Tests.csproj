@@ -12,7 +12,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../MyNotch/Models/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../../MyNotch/Models/AppUpdate.cs" Link="AppUpdate.cs" />
     <Compile Include="../../MyNotch/Services/SettingsService.cs" Link="SettingsService.cs" />
+    <Compile Include="../../MyNotch/Services/UpdateService.cs" Link="UpdateService.cs" />
     <Compile Include="../../MyNotch/Services/StartupRegistration.cs" Link="StartupRegistration.cs" />
     <Compile Include="../../MyNotch/Models/ClipboardDetection.cs" Link="ClipboardDetection.cs" />
     <Compile Include="../../MyNotch/Models/CronSchedule.cs" Link="CronSchedule.cs" />

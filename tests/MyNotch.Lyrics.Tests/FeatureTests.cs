@@ -17,7 +17,8 @@ internal static class FeatureTests
         Hooks();
         CliParsers();
         Settings();
-        Console.WriteLine("PASS: clipboard detectors (JWT exp, timestamp, UUID v4/v7, color, cron, URL, Base64), cron next-runs, ICS recurrence/exceptions/zones, agent sessions, Claude Code hook mapping and decisions, docker/git/gh parsers, settings persistence, cmd escaping, Run-key parsing");
+        Updates();
+        Console.WriteLine("PASS: clipboard detectors (JWT exp, timestamp, UUID v4/v7, color, cron, URL, Base64), cron next-runs, ICS recurrence/exceptions/zones, agent sessions, Claude Code hook mapping and decisions, docker/git/gh parsers, settings persistence, cmd escaping, Run-key parsing, update parser");
     }
 
     /// <summary>Real HTTP round trips against the webhook server on a free loopback port.</summary>
@@ -82,7 +83,8 @@ internal static class FeatureTests
             Check((int)response.StatusCode == 500, "throwing subscriber answered with 500 instead of hanging");
         }
         finally { await throwing.StopAsync(); }
-        Console.WriteLine("PASS: webhook HTTP: /claude/permission allow/deny/no-decision, /claude/hook mapping with empty stdout, session end, sender PID lookup, Origin rejection, legacy /agent");
+        await UpdateDownloadAsync();
+        Console.WriteLine("PASS: webhook HTTP: /claude/permission allow/deny/no-decision, /claude/hook mapping with empty stdout, session end, sender PID lookup, Origin rejection, legacy /agent, update download & SHA-256 verification");
     }
 
     private static void Clipboard()
@@ -270,10 +272,10 @@ internal static class FeatureTests
         {
             string path = Path.Combine(dir, "settings.json");
             var service = new SettingsService(path);
-            Check(service.Current.FocusMinutes == 25 && !File.Exists(path), "defaults without a file");
-            Check(service.Update(s => s with { FocusMinutes = 500, Display = "follow", DisabledUsageProviders = ["Muse"] }), "update saves");
+            Check(service.Current.FocusMinutes == 25 && service.Current.HoverToOpen && service.Current.HoverDelayMs == 300 && !File.Exists(path), "defaults without a file");
+            Check(service.Update(s => s with { FocusMinutes = 500, HoverToOpen = false, HoverDelayMs = 50, Display = "follow", DisabledUsageProviders = ["Muse"] }), "update saves");
             var reloaded = new SettingsService(path);
-            Check(reloaded.Current.FocusMinutes == 180 && reloaded.Current.Display == "follow" && reloaded.Current.DisabledUsageProviders.SequenceEqual(new[] { "Muse" }), "clamped and reloaded");
+            Check(reloaded.Current.FocusMinutes == 180 && !reloaded.Current.HoverToOpen && reloaded.Current.HoverDelayMs == 100 && reloaded.Current.Display == "follow" && reloaded.Current.DisabledUsageProviders.SequenceEqual(new[] { "Muse" }), "clamped and reloaded");
             int changes = 0;
             reloaded.Changed += (_, _) => changes++;
             Check(reloaded.Update(s => s with { DisabledUsageProviders = ["Muse"] }) && changes == 0, "no-op update doesn't fire or write");
@@ -282,5 +284,103 @@ internal static class FeatureTests
             Check(!corrupt.Update(s => s with { FocusMinutes = 30 }) && File.ReadAllText(path) == "{ broken", "corrupt file is never overwritten");
         }
         finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
+    private static void Updates()
+    {
+        Check(AppUpdateParser.NormalizeDisplayVersion("v0.1.3+10cd337abc") == "v0.1.3", "display version strips commit hash");
+        Check(AppUpdateParser.NormalizeDisplayVersion("0.1.4") == "v0.1.4", "display version adds v prefix");
+        Check(AppUpdateParser.IsNewer("v0.1.4", "v0.1.3+abc"), "newer patch detected");
+        Check(!AppUpdateParser.IsNewer("v0.1.3", "v0.1.3+abc"), "same version not newer");
+        Check(!AppUpdateParser.IsNewer("v0.1.2", "v0.1.3"), "older version not newer");
+        Check(AppUpdateParser.IsNewer("v0.2.0", "v0.2.0-beta.1"), "stable newer than prerelease");
+        Check(!AppUpdateParser.IsNewer("v0.2.0-beta.1", "v0.2.0"), "prerelease older than stable");
+        Check(AppUpdateParser.IsNewer("v0.1.3", "0.0.0"), "release newer than dev 0.0.0");
+
+        Check(AppUpdateParser.IsTrustedAssetUrl("https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/MyNotch-Setup-v0.1.4-win-x64.exe"), "github.com trusted");
+        Check(AppUpdateParser.IsTrustedAssetUrl("https://objects.githubusercontent.com/some/asset.exe"), "githubusercontent trusted");
+        Check(!AppUpdateParser.IsTrustedAssetUrl("http://github.com/brendatamaar/my-notch/releases/download/v0.1.4/a.exe"), "http rejected");
+        Check(!AppUpdateParser.IsTrustedAssetUrl("https://evil.example/MyNotch-Setup-v0.1.4-win-x64.exe"), "untrusted host rejected");
+
+        const string releaseJson = """
+        {
+          "tag_name": "v0.1.4",
+          "html_url": "https://github.com/brendatamaar/my-notch/releases/tag/v0.1.4",
+          "draft": false,
+          "assets": [
+            { "name": "MyNotch-v0.1.4-win-x64.zip", "browser_download_url": "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/MyNotch-v0.1.4-win-x64.zip" },
+            { "name": "MyNotch-Setup-v0.1.4-win-x64.exe", "browser_download_url": "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/MyNotch-Setup-v0.1.4-win-x64.exe" },
+            { "name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/SHA256SUMS.txt" }
+          ]
+        }
+        """;
+        var (rel, upToDate, err) = AppUpdateParser.ParseGitHubRelease(releaseJson, "v0.1.3+10cd337");
+        Check(rel is { Tag: "v0.1.4", InstallerName: "MyNotch-Setup-v0.1.4-win-x64.exe" } && rel.ChecksumsUrl is not null && !upToDate && err is null, "parses newer release with installer and checksums");
+        var (sameRel, sameUpToDate, _) = AppUpdateParser.ParseGitHubRelease(releaseJson, "v0.1.4");
+        Check(sameRel is null && sameUpToDate, "reports up to date when on latest");
+
+        string fakeHash = new string('a', 64);
+        string sums = $"{fakeHash}  MyNotch-Setup-v0.1.4-win-x64.exe\n{new string('b', 64)}  MyNotch-v0.1.4-win-x64.zip\n";
+        Check(AppUpdateParser.ParseExpectedSha256(sums, "MyNotch-Setup-v0.1.4-win-x64.exe") == fakeHash, "extracts installer sha256");
+        Check(AppUpdateParser.ParseExpectedSha256(sums, "missing.exe") is null, "missing file returns null hash");
+    }
+
+    private static async Task UpdateDownloadAsync()
+    {
+        byte[] payload = Encoding.UTF8.GetBytes("fake-installer-bytes-v0.1.4");
+        string goodHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload)).ToLowerInvariant();
+        string badHash = new string('0', 64);
+        string dir = Path.Combine(Path.GetTempPath(), "mynotch-update-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            const string releaseJson = """
+            {
+              "tag_name": "v0.1.4",
+              "html_url": "https://github.com/brendatamaar/my-notch/releases/tag/v0.1.4",
+              "draft": false,
+              "assets": [
+                { "name": "MyNotch-Setup-v0.1.4-win-x64.exe", "browser_download_url": "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/MyNotch-Setup-v0.1.4-win-x64.exe" },
+                { "name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/SHA256SUMS.txt" }
+              ]
+            }
+            """;
+
+            using (var updater = new UpdateService(new StubHttpHandler(req =>
+            {
+                string u = req.RequestUri!.AbsoluteUri;
+                if (u.EndsWith("/releases/latest")) return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(releaseJson) };
+                if (u.EndsWith("SHA256SUMS.txt")) return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent($"{goodHash}  MyNotch-Setup-v0.1.4-win-x64.exe\n") };
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+            }), currentVersion: "v0.1.3", downloadRoot: dir))
+            {
+                var checkedState = await updater.CheckAsync(force: true);
+                Check(checkedState.Kind == UpdateStatusKind.Available && checkedState.Release is { Tag: "v0.1.4" }, "UpdateService detects available release");
+                string? downloaded = await updater.DownloadAndVerifyAsync(checkedState.Release!);
+                Check(downloaded is not null && File.Exists(downloaded) && File.ReadAllBytes(downloaded).SequenceEqual(payload), "UpdateService downloads and verifies valid SHA-256");
+            }
+
+            using (var badUpdater = new UpdateService(new StubHttpHandler(req =>
+            {
+                string u = req.RequestUri!.AbsoluteUri;
+                if (u.EndsWith("SHA256SUMS.txt")) return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent($"{badHash}  MyNotch-Setup-v0.1.4-win-x64.exe\n") };
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+            }), currentVersion: "v0.1.3", downloadRoot: dir))
+            {
+                var rel = new AppUpdateRelease("v0.1.4", new Version(0, 1, 4),
+                    "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/MyNotch-Setup-v0.1.4-win-x64.exe",
+                    "MyNotch-Setup-v0.1.4-win-x64.exe",
+                    "https://github.com/brendatamaar/my-notch/releases/download/v0.1.4/SHA256SUMS.txt",
+                    "https://github.com/brendatamaar/my-notch/releases/tag/v0.1.4");
+                string? rejected = await badUpdater.DownloadAndVerifyAsync(rel);
+                Check(rejected is null && badUpdater.State.Kind == UpdateStatusKind.Error && (badUpdater.State.Message?.Contains("SHA-256") ?? false), "UpdateService rejects SHA-256 mismatch");
+            }
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
+    private sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
     }
 }

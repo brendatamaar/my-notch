@@ -18,6 +18,8 @@ public sealed class TrayIconService : IDisposable
     private const int CmdNotifications = 3;
     private const int CmdSettings = 4;
     private const int CmdStartup = 5;
+    private const int CmdClickThrough = 6;
+    private const int CmdUpdate = 7;
     private const int CmdQuit = 9;
     private static readonly UIntPtr SubclassId = new(0x54726179); // "Tray"
 
@@ -37,10 +39,18 @@ public sealed class TrayIconService : IDisposable
     public event EventHandler? NotificationSettingsRequested;
     public event EventHandler? SettingsRequested;
     public event EventHandler? StartupToggleRequested;
+    public event EventHandler? ClickThroughToggleRequested;
+    public event EventHandler? UpdateRequested;
     public event EventHandler? QuitRequested;
 
     /// <summary>Supplies the "Start with Windows" item's label and check mark each time the menu opens.</summary>
     public Func<(string Label, bool Checked)>? StartupItem { get; set; }
+
+    /// <summary>Supplies the "Click-through mode" check mark each time the menu opens.</summary>
+    public Func<bool>? ClickThroughChecked { get; set; }
+
+    /// <summary>Optional label (e.g. "Update to v0.1.4") shown when a newer GitHub release is available.</summary>
+    public Func<string?>? UpdateItemLabel { get; set; }
 
     public bool Start(IntPtr hwnd)
     {
@@ -80,6 +90,10 @@ public sealed class TrayIconService : IDisposable
             _ = NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, CmdPalette, "Actions");
             _ = NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, CmdSettings, "Settings");
             _ = NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, CmdNotifications, "Notification settings");
+            if (ClickThroughChecked is not null)
+                _ = NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING | (ClickThroughChecked() ? NativeMethods.MF_CHECKED : 0), CmdClickThrough, "Click-through mode");
+            if (UpdateItemLabel?.Invoke() is { Length: > 0 } updateLabel)
+                _ = NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, CmdUpdate, updateLabel);
             if (StartupItem?.Invoke() is { } startup)
             {
                 _ = NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, 0, null);
@@ -109,6 +123,8 @@ public sealed class TrayIconService : IDisposable
             case CmdNotifications: NotificationSettingsRequested?.Invoke(this, EventArgs.Empty); break;
             case CmdSettings: SettingsRequested?.Invoke(this, EventArgs.Empty); break;
             case CmdStartup: StartupToggleRequested?.Invoke(this, EventArgs.Empty); break;
+            case CmdClickThrough: ClickThroughToggleRequested?.Invoke(this, EventArgs.Empty); break;
+            case CmdUpdate: UpdateRequested?.Invoke(this, EventArgs.Empty); break;
             case CmdQuit: QuitRequested?.Invoke(this, EventArgs.Empty); break;
         }
     }

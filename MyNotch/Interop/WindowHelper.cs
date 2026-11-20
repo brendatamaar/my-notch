@@ -26,6 +26,12 @@ internal static class WindowHelper
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
 
+        string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "MyNotch.ico");
+        if (File.Exists(iconPath))
+        {
+            try { appWindow.SetIcon(iconPath); } catch (COMException) { }
+        }
+
         if (appWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.SetBorderAndTitleBar(hasBorder: false, hasTitleBar: false);
@@ -99,6 +105,62 @@ internal static class WindowHelper
         var region = NativeMethods.CreateRectRgn(left, 0, left + width, bottom);
         if (region == IntPtr.Zero) return;
         if (NativeMethods.SetWindowRgn(hwnd, region, true) == 0) _ = NativeMethods.DeleteObject(region);
+    }
+
+    /// <summary>
+    /// Tight clip for the settled collapsed pill: hugs the pill body (+4 DIPs side/bottom) plus a thin top strip
+    /// for the 10 DIP concave shoulders, so the 28 DIP drop-shadow stage never eats clicks on browser tabs underneath.
+    /// </summary>
+    internal static void ClipToCollapsedPill(Window window, SizeInt32 windowDip, SizeInt32 pillDip)
+    {
+        var hwnd = GetHwnd(window);
+        var win = ToPixels(hwnd, windowDip);
+        var body = ToPixels(hwnd, new SizeInt32(pillDip.Width + 8, pillDip.Height + 4));
+        var shoulders = ToPixels(hwnd, new SizeInt32(pillDip.Width + 24, 12));
+
+        int bodyW = Math.Min(body.Width, win.Width);
+        int bodyLeft = (win.Width - bodyW) / 2;
+        int bodyBottom = Math.Min(body.Height, win.Height);
+
+        int shoulderW = Math.Min(shoulders.Width, win.Width);
+        int shoulderLeft = (win.Width - shoulderW) / 2;
+        int shoulderBottom = Math.Min(shoulders.Height, win.Height);
+
+        var bodyRgn = NativeMethods.CreateRectRgn(bodyLeft, 0, bodyLeft + bodyW, bodyBottom);
+        if (bodyRgn == IntPtr.Zero) return;
+        var shoulderRgn = NativeMethods.CreateRectRgn(shoulderLeft, 0, shoulderLeft + shoulderW, shoulderBottom);
+        if (shoulderRgn != IntPtr.Zero)
+        {
+            _ = NativeMethods.CombineRgn(bodyRgn, bodyRgn, shoulderRgn, NativeMethods.RGN_OR);
+            _ = NativeMethods.DeleteObject(shoulderRgn);
+        }
+        if (NativeMethods.SetWindowRgn(hwnd, bodyRgn, true) == 0) _ = NativeMethods.DeleteObject(bodyRgn);
+    }
+
+    /// <summary>Makes the entire notch window click-through (WS_EX_TRANSPARENT) so clicks land on windows behind it.</summary>
+    internal static void SetClickThrough(Window window, bool enabled)
+    {
+        var hwnd = GetHwnd(window);
+        var ex = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
+        long next = enabled ? (ex | NativeMethods.WS_EX_TRANSPARENT) : (ex & ~NativeMethods.WS_EX_TRANSPARENT);
+        if (next == ex) return;
+        _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(next));
+        _ = NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
+    }
+
+    internal static bool IsAltHeld() => (NativeMethods.GetAsyncKeyState(NativeMethods.VK_MENU) & 0x8000) != 0;
+
+    /// <summary>True when the cursor is over or within <paramref name="marginDip"/> of the top-centred pill.</summary>
+    internal static bool IsCursorNearPill(Window window, SizeInt32 pillDip, int marginDip)
+    {
+        var hwnd = GetHwnd(window);
+        if (!NativeMethods.GetCursorPos(out var pt) || !NativeMethods.GetWindowRect(hwnd, out var rect)) return false;
+        var pill = ToPixels(hwnd, new SizeInt32(pillDip.Width + 2 * marginDip, pillDip.Height + marginDip));
+        int winW = rect.Right - rect.Left;
+        int left = rect.Left + (winW - pill.Width) / 2;
+        int top = rect.Top;
+        return pt.X >= left && pt.X <= left + pill.Width && pt.Y >= top && pt.Y <= top + pill.Height;
     }
 
     private static SizeInt32 ToPixels(IntPtr hwnd, SizeInt32 dip) => Scale(dip, NativeMethods.GetDpiForWindow(hwnd));

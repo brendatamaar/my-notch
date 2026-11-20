@@ -11,9 +11,17 @@ public sealed partial class MainWindow
 {
     private readonly SettingsService _settings = SettingsService.Shared;
     private readonly DisplayWatcher _displayWatcher = new();
+    private readonly UpdateService _updater = new();
     private MeetingService _meetings = null!;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer _ghostWatchTimer = null!;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer _updateStartTimer = null!;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer _updatePeriodicTimer = null!;
     private bool _hiddenForFullscreen;
     private bool _fullscreenOverride; // the user explicitly opened the notch while an app was fullscreen
+    private enum GhostMode { None, Alt, MiddleClick, Manual }
+    private GhostMode _ghostMode;
+    private DateTimeOffset _ghostEnteredAt;
+    private string? _announcedUpdateTag;
 
     private void InitializeFeatures()
     {
@@ -24,7 +32,25 @@ public sealed partial class MainWindow
             meeting.Start <= DateTimeOffset.Now ? "Meeting now" : $"Meeting in {Math.Max(1, (int)Math.Ceiling((meeting.Start - DateTimeOffset.Now).TotalMinutes))} min",
             meeting.Title, DateTimeOffset.Now, VisibleFor: TimeSpan.FromSeconds(20)));
 
+        _ghostWatchTimer = _dispatcher.CreateTimer();
+        _ghostWatchTimer.Interval = TimeSpan.FromMilliseconds(90);
+        _ghostWatchTimer.IsRepeating = true;
+        _ghostWatchTimer.Tick += (_, _) => OnGhostWatchTick();
+
+        _updateStartTimer = CreateOneShot(() => _ = _updater.CheckAsync(force: false));
+        _updateStartTimer.Interval = TimeSpan.FromSeconds(15);
+        _updatePeriodicTimer = _dispatcher.CreateTimer();
+        _updatePeriodicTimer.Interval = TimeSpan.FromHours(6);
+        _updatePeriodicTimer.IsRepeating = true;
+        _updatePeriodicTimer.Tick += (_, _) => _ = _updater.CheckAsync(force: false);
+
+        _updater.Changed += (_, _) => _dispatcher.TryEnqueue(OnUpdateStateChanged);
+
         _tray.SettingsRequested += (_, _) => { Expand(pin: true, NotchTab.Settings); Activate(); };
+        _tray.ClickThroughChecked = () => _ghostMode == GhostMode.Manual;
+        _tray.ClickThroughToggleRequested += (_, _) => ToggleManualClickThrough();
+        _tray.UpdateItemLabel = () => _updater.State is { Kind: UpdateStatusKind.Available, Release: { } r } ? $"Update to {r.Tag}" : null;
+        _tray.UpdateRequested += (_, _) => StartInNotchUpdate();
         _tray.StartupItem = () =>
         {
             var (state, _) = StartupRegistration.Read();
@@ -37,6 +63,9 @@ public sealed partial class MainWindow
             SettingsPage.Refresh();
         };
         SettingsPage.NotificationSettingsRequested += OnNotificationSettingsRequested;
+        SettingsPage.CheckUpdateRequested += (_, _) => _ = _updater.CheckAsync(force: true);
+        SettingsPage.InstallUpdateRequested += (_, _) => StartInNotchUpdate();
+        SettingsPage.ApplyUpdateState(_updater.State);
 
         _settings.Changed += (_, _) => ApplySettings();
         _displayWatcher.FullscreenChanged += (_, full) => OnFullscreenChanged(full);
@@ -51,6 +80,97 @@ public sealed partial class MainWindow
         PlaceOnConfiguredDisplay();
         var s = _settings.Current;
         _meetings.Configure(s.CalendarFeedUrl, TimeSpan.FromMinutes(s.MeetingLeadMinutes));
+        _updateStartTimer.Start();
+        _updatePeriodicTimer.Start();
+    }
+
+    private void DisposeFeatures()
+    {
+        _ghostWatchTimer.Stop();
+        _updateStartTimer.Stop();
+        _updatePeriodicTimer.Stop();
+        _updater.Dispose();
+    }
+
+    // ---------------------------------------------------------------- click-through / ghost mode
+
+    private void ApplyCurrentClip()
+    {
+        if (ViewModel.IsExpanded || _peeking)
+            WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+        else
+            WindowHelper.ClipToCollapsedPill(this, _windowDip, _shape);
+    }
+
+    private void EnterGhost(GhostMode mode)
+    {
+        if (mode == GhostMode.None) { ExitGhost(); return; }
+        CancelHover();
+        Peek(false);
+        if (ViewModel.IsExpanded) Collapse();
+        _pointerInShape = false;
+        _ghostMode = mode;
+        _ghostEnteredAt = DateTimeOffset.UtcNow;
+        RootGrid.Opacity = 0.18;
+        WindowHelper.SetClickThrough(this, true);
+        if (mode is GhostMode.Alt or GhostMode.MiddleClick) _ghostWatchTimer.Start();
+        else _ghostWatchTimer.Stop();
+    }
+
+    private void ExitGhost()
+    {
+        if (_ghostMode == GhostMode.None) return;
+        _ghostMode = GhostMode.None;
+        _ghostWatchTimer.Stop();
+        RootGrid.Opacity = 1.0;
+        WindowHelper.SetClickThrough(this, false);
+        ApplyCurrentClip();
+    }
+
+    private void ToggleManualClickThrough()
+    {
+        if (_ghostMode == GhostMode.Manual) ExitGhost();
+        else EnterGhost(GhostMode.Manual);
+    }
+
+    private void OnGhostWatchTick()
+    {
+        if (_ghostMode == GhostMode.Alt)
+        {
+            if (!WindowHelper.IsAltHeld()) ExitGhost();
+        }
+        else if (_ghostMode == GhostMode.MiddleClick)
+        {
+            // Keep ghosted briefly after middle-click and while the cursor remains over/near the pill.
+            if (DateTimeOffset.UtcNow - _ghostEnteredAt < TimeSpan.FromMilliseconds(450)) return;
+            if (!WindowHelper.IsCursorNearPill(this, _shape, marginDip: 24)) ExitGhost();
+        }
+        else
+        {
+            _ghostWatchTimer.Stop();
+        }
+    }
+
+    // ---------------------------------------------------------------- updates
+
+    private void OnUpdateStateChanged()
+    {
+        var state = _updater.State;
+        SettingsPage.ApplyUpdateState(state);
+        UpdateBadges();
+        if (state.Kind == UpdateStatusKind.Available && state.Release is { } release
+            && !string.Equals(_announcedUpdateTag, release.Tag, StringComparison.OrdinalIgnoreCase))
+        {
+            _announcedUpdateTag = release.Tag;
+            ShowNotice($"Update {release.Tag} available\nOpen Settings to install", TimeSpan.FromSeconds(10));
+        }
+    }
+
+    private void StartInNotchUpdate()
+    {
+        Expand(pin: true, NotchTab.Settings);
+        Activate();
+        _ = _updater.InstallAndExitAsync(() => _dispatcher.TryEnqueue(Close));
     }
 
     /// <summary>Applies every setting that has a live effect. Safe to call repeatedly.</summary>
@@ -93,12 +213,12 @@ public sealed partial class MainWindow
         if (target is null || (WindowHelper.TargetDisplay is { } current && current.Value == target.Value.Value)) return;
         WindowHelper.TargetDisplay = target;
         WindowHelper.Resize(this, _windowDip);
-        WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+        ApplyCurrentClip();
         // A DPI change on the new monitor can resize the window after the move; settle once more.
         _dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             WindowHelper.Resize(this, _windowDip);
-            WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+            ApplyCurrentClip();
         });
         _displayWatcher.Evaluate();
     }

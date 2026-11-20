@@ -29,6 +29,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename=MyNotch-Setup-{#MyAppTag}-win-x64
+SetupIconFile=..\MyNotch\Assets\MyNotch.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -59,9 +60,15 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Type: filesandordirs; Name: "{app}\NotificationIdentity"
 
 [Run]
-Filename: "{app}\MyNotch.exe"; Description: "{cm:LaunchProgram,MyNotch}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\MyNotch.exe"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,MyNotch}"; Flags: nowait postinstall skipifsilent shellexec
+Filename: "{app}\MyNotch.exe"; WorkingDir: "{app}"; Flags: nowait skipifnotsilent shellexec; Check: ShouldAutoLaunch
 
 [Code]
+function ShouldAutoLaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:LAUNCH|0}') = '1';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then

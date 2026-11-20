@@ -19,6 +19,9 @@
         <TextBlock Text="GENERAL" Style="{StaticResource SectionLabel}" />
         <CheckBox x:Name="StartupBox" Content="Start with Windows" Style="{StaticResource SettingCheck}" Click="Startup_Click" />
         <CheckBox x:Name="FullscreenBox" Content="Hide while an app is fullscreen" Style="{StaticResource SettingCheck}" Click="Fullscreen_Click" />
+        <CheckBox x:Name="HoverOpenBox" Content="Expand on hover (off = click to open)" Style="{StaticResource SettingCheck}" Click="HoverOpen_Click" />
+        <StackPanel x:Name="HoverDelayHost" Spacing="3" />
+        <TextBlock Text="Middle-click or hold Alt on the notch to click through it." FontSize="10" Foreground="{StaticResource NotchText3Brush}" TextWrapping="Wrap" Margin="0,0,0,2" />
         <Grid ColumnSpacing="8">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /></Grid.ColumnDefinitions>
           <TextBlock Text="Show on" FontSize="12" VerticalAlignment="Center" Foreground="{StaticResource NotchText2Brush}" />
@@ -47,6 +50,12 @@
         <TextBlock Text="DEVELOPER" Style="{StaticResource SectionLabel}" />
         <CheckBox x:Name="ClipsBox" Content="Keep the last 10 copied texts (memory only)" Style="{StaticResource SettingCheck}" Click="Clips_Click" />
         <CheckBox x:Name="CiBox" Content="Notify when a running CI build finishes" Style="{StaticResource SettingCheck}" Click="Ci_Click" />
+        <TextBlock Text="UPDATES" Style="{StaticResource SectionLabel}" />
+        <TextBlock x:Name="UpdateStatus" Text="Version" FontSize="11" Foreground="{StaticResource NotchText2Brush}" TextWrapping="Wrap" MaxLines="2" />
+        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+          <Button x:Name="InstallUpdateButton" Content="Update" Click="InstallUpdate_Click" Style="{StaticResource NotchAccentButtonStyle}" Padding="10,4" FontSize="11" Visibility="Collapsed" />
+          <Button x:Name="CheckUpdateButton" Content="Check for updates" Click="CheckUpdate_Click" Style="{StaticResource NotchButtonStyle}" Padding="10,4" FontSize="11" />
+        </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
           <Button Content="Notification settings" Click="Notifications_Click" Style="{StaticResource NotchButtonStyle}" Padding="10,4" FontSize="11" />
           <Button Content="Open settings folder" Click="OpenFolder_Click" Style="{StaticResource NotchButtonStyle}" Padding="10,4" FontSize="11" />

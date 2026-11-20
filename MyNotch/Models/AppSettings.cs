@@ -11,6 +11,10 @@ public sealed record AppSettings
     public bool HideInFullscreen { get; init; } = true;
     /// <summary>"primary", "follow" (monitor of the active window) or "display:&lt;DisplayId&gt;".</summary>
     public string Display { get; init; } = "primary";
+    /// <summary>When false, sweeping the cursor over the pill never opens it; click the pill or use tray/hotkey.</summary>
+    public bool HoverToOpen { get; init; } = true;
+    /// <summary>Milliseconds the cursor must rest on the collapsed pill before it expands (when HoverToOpen is true).</summary>
+    public int HoverDelayMs { get; init; } = 300;
 
     // Focus
     public int FocusMinutes { get; init; } = 25;
@@ -37,6 +41,7 @@ public sealed record AppSettings
     public AppSettings Normalize() => this with
     {
         Display = string.IsNullOrWhiteSpace(Display) ? "primary" : Display.Trim(),
+        HoverDelayMs = Math.Clamp(HoverDelayMs, 100, 1000),
         FocusMinutes = Math.Clamp(FocusMinutes, 1, 180),
         ShortBreakMinutes = Math.Clamp(ShortBreakMinutes, 1, 60),
         LongBreakMinutes = Math.Clamp(LongBreakMinutes, 1, 120),

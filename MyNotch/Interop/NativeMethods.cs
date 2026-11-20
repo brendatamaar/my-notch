@@ -15,8 +15,11 @@ internal static partial class NativeMethods
     internal const long WS_THICKFRAME = 0x00040000L;
     internal const long WS_SYSMENU = 0x00080000L;
     internal const long WS_EX_LAYERED = 0x00080000L;
+    internal const long WS_EX_TRANSPARENT = 0x00000020L;
     internal const long WS_EX_TOOLWINDOW = 0x00000080L;
     internal const long WS_EX_NOACTIVATE = 0x08000000L;
+    internal const int VK_MENU = 0x12;
+    internal const int RGN_OR = 2;
 
     internal static readonly IntPtr HWND_TOPMOST = new(-1);
     internal const uint SWP_NOMOVE = 0x0002;
@@ -102,7 +105,13 @@ internal static partial class NativeMethods
     [LibraryImport("gdi32.dll")]
     internal static partial IntPtr CreateRectRgn(int left, int top, int right, int bottom);
 
+    [LibraryImport("gdi32.dll")]
+    internal static partial int CombineRgn(IntPtr hrgnDest, IntPtr hrgnSrc1, IntPtr hrgnSrc2, int iMode);
+
     /// <summary>On success the system owns <paramref name="hRgn"/>; on failure the caller must delete it.</summary>
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
+
+    [LibraryImport("user32.dll")]
+    internal static partial short GetAsyncKeyState(int vKey);
 }

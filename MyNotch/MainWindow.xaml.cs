@@ -40,7 +40,6 @@ public sealed partial class MainWindow : Window
     private const float PeekGrowY = 4;
     private static readonly TimeSpan ShapeSettleTime = TimeSpan.FromMilliseconds(520);
 
-    private static readonly TimeSpan HoverOpenDelay = TimeSpan.FromMilliseconds(160);
     private static readonly TimeSpan HoverCloseDelay = TimeSpan.FromMilliseconds(450);
     private static readonly TimeSpan ClipboardGlanceTime = TimeSpan.FromSeconds(8);
 
@@ -175,7 +174,7 @@ public sealed partial class MainWindow : Window
         _windowDip = StageFor(LargestShape);
         _stageDip = StageFor(_shape);
         WindowHelper.ConfigureNotchShell(this, _windowDip);
-        WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+        WindowHelper.ClipToCollapsedPill(this, _windowDip, _shape);
         _island.Snap(new Vector2(_shape.Width, _shape.Height), 14f);
         GlanceHost.Width = _shape.Width;
         GlanceHost.Height = _shape.Height;
@@ -1059,10 +1058,8 @@ public sealed partial class MainWindow : Window
 
     private void OnShapeSettled()
     {
-        var need = StageFor(_shape);
-        if (need.Width == _stageDip.Width && need.Height == _stageDip.Height) return;
-        _stageDip = need;
-        WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+        _stageDip = StageFor(_shape);
+        ApplyCurrentClip();
     }
 
     // The closed capsule swells a little when the pointer arrives, a beat before it opens (and relaxes if it leaves).
@@ -1070,6 +1067,15 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.IsExpanded || _peeking == on) return;
         _peeking = on;
+        if (on)
+        {
+            _stageDip = StageFor(_shape);
+            WindowHelper.ClipToStage(this, _windowDip, _stageDip);
+        }
+        else
+        {
+            WindowHelper.ClipToCollapsedPill(this, _windowDip, _shape);
+        }
         var size = new Vector2(_shape.Width + (on ? PeekGrowX : 0), _shape.Height + (on ? PeekGrowY : 0));
         _island.MorphTo(size, 14f, damping: 0.6f, periodMs: 45);
     }
@@ -1093,7 +1099,7 @@ public sealed partial class MainWindow : Window
     private void Expand(bool pin, NotchTab? tab = null)
     {
         CancelHover();
-        if (pin) { _pinned = true; RevealForUser(); }
+        if (pin) { ExitGhost(); _pinned = true; RevealForUser(); }
 
         // Contextual first page: whatever is asking for attention, else wherever you left off.
         tab ??= _glance.Kind switch
@@ -1183,13 +1189,23 @@ public sealed partial class MainWindow : Window
     // the clip, so XAML's own enter/exit events can't tell "over the island" from "next to it". Track that here.
     private bool ShapeContains(Windows.Foundation.Point p)
     {
+        double margin = ViewModel.IsExpanded ? 6 : 2;
         double left = (Pill.ActualWidth - _shape.Width) / 2.0;
-        return p.X >= left - 6 && p.X <= left + _shape.Width + 6
-            && p.Y >= -FloatGap && p.Y <= _shape.Height + 6;
+        return p.X >= left - margin && p.X <= left + _shape.Width + margin
+            && p.Y >= -FloatGap && p.Y <= _shape.Height + margin;
     }
 
-    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e) =>
-        SetPointerInShape(ShapeContains(e.GetCurrentPoint(Pill).Position));
+    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var pos = e.GetCurrentPoint(Pill).Position;
+        bool inside = ShapeContains(pos);
+        if (inside && !ViewModel.IsExpanded && WindowHelper.IsAltHeld())
+        {
+            EnterGhost(GhostMode.Alt);
+            return;
+        }
+        SetPointerInShape(inside);
+    }
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e) => SetPointerInShape(false);
 
@@ -1200,9 +1216,9 @@ public sealed partial class MainWindow : Window
         if (inside)
         {
             if (ViewModel.IsExpanded) CancelHover();
-            else
+            else if (_settings.Current.HoverToOpen)
             {
-                ScheduleHover(HoverIntent.Open, HoverOpenDelay);
+                ScheduleHover(HoverIntent.Open, TimeSpan.FromMilliseconds(_settings.Current.HoverDelayMs));
                 Peek(true);
             }
         }
@@ -1215,10 +1231,23 @@ public sealed partial class MainWindow : Window
     }
 
     // Any press on the island pins it: a click on the closed capsule opens it; a click inside the open one keeps it open.
+    // Middle-click (or Alt+click) on the collapsed pill temporarily ghosts it so clicks reach whatever is behind it.
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(Pill);
-        if (!point.Properties.IsLeftButtonPressed || !ShapeContains(point.Position)) return;
+        if (!ShapeContains(point.Position)) return;
+        if (point.Properties.IsMiddleButtonPressed && !ViewModel.IsExpanded)
+        {
+            EnterGhost(GhostMode.MiddleClick);
+            e.Handled = true;
+            return;
+        }
+        if (!point.Properties.IsLeftButtonPressed) return;
+        if (!ViewModel.IsExpanded && WindowHelper.IsAltHeld())
+        {
+            EnterGhost(GhostMode.Alt);
+            return;
+        }
         if (ViewModel.IsExpanded) _pinned = true;
         else Expand(pin: true);
     }
@@ -1353,7 +1382,7 @@ public sealed partial class MainWindow : Window
             NotchTab.Music => new SizeInt32(600, Media.HasMedia ? 204 : 180),
             NotchTab.Calendar => new SizeInt32(600, CalendarPage.HasMeeting ? 318 : 280),
             NotchTab.Dev => new SizeInt32(600, 280),
-            NotchTab.Settings => new SizeInt32(600, 300),
+            NotchTab.Settings => new SizeInt32(600, 336),
             NotchTab.System => new SizeInt32(600, 324),
             NotchTab.Focus => new SizeInt32(600, 200),
             NotchTab.Prayer => new SizeInt32(600, 202),
@@ -1372,6 +1401,7 @@ public sealed partial class MainWindow : Window
         bool awaiting = AgentAlert.ViewModel.Status == AgentStatus.AwaitingApproval;
         AgentsBadge.Visibility = awaiting && ViewModel.SelectedTab != NotchTab.Agents ? Visibility.Visible : Visibility.Collapsed;
         DevBadge.Visibility = DevTools.HasClipboardAction && ViewModel.SelectedTab != NotchTab.Dev ? Visibility.Visible : Visibility.Collapsed;
+        SettingsBadge.Visibility = _updater.State.Kind == UpdateStatusKind.Available && ViewModel.SelectedTab != NotchTab.Settings ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---------------------------------------------------------------- command palette
@@ -1419,6 +1449,7 @@ public sealed partial class MainWindow : Window
         ResolveAllApprovals(ApprovalDecision.None);
         _webhook.ApprovalHandler = null;
         _displayWatcher.Dispose();
+        DisposeFeatures();
         _meetings.Dispose();
         _ciTimer.Stop();
         DisposeNotifications();
